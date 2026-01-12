@@ -1016,21 +1016,23 @@ function wireHomeRibbon() {
     btn.onclick = (ev) => {
       ev.stopPropagation();
       if (Editor?.restoreSelection) Editor.restoreSelection();
-      const type = btn.dataset.bulletType;
-      if (type === "remove") {
+      const bulletType = btn.dataset.bulletType;
+      if (bulletType === "remove") {
         exec("insertUnorderedList");
       } else {
         exec("insertUnorderedList");
         setTimeout(() => {
-          const sel = window.getSelection();
-          const currentUl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest("ul") : null;
-          const editor = el("editor");
-          const allUls = editor ? Array.from(editor.querySelectorAll("ul")) : [];
-          const targetUl = currentUl || allUls[allUls.length - 1];
-          if (targetUl) {
-            targetUl.style.listStyleType = type === "•" ? "disc" : type === "○" ? "circle" : "square";
-          }
-        }, 0);
+          try {
+            const editor = el("editor");
+            if (editor) {
+              const uls = editor.querySelectorAll("ul");
+              const lastUl = uls[uls.length - 1];
+              if (lastUl) {
+                lastUl.style.listStyleType = bulletType === "•" ? "disc" : bulletType === "○" ? "circle" : "square";
+              }
+            }
+          } catch(e) { console.error("Bullet style error:", e); }
+        }, 10);
       }
       autosave();
       updateRibbonFormatting();
@@ -1053,22 +1055,23 @@ function wireHomeRibbon() {
     btn.onclick = (ev) => {
       ev.stopPropagation();
       if (Editor?.restoreSelection) Editor.restoreSelection();
-      const type = btn.dataset.numberType;
-      if (type === "remove") {
+      const numType = btn.dataset.numberType;
+      if (numType === "remove") {
         exec("insertOrderedList");
       } else {
-        const sel = window.getSelection();
-        const currentOl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest("ol") : null;
         exec("insertOrderedList");
         setTimeout(() => {
-          if (currentOl) {
-            currentOl.type = type;
-          } else {
+          try {
             const editor = el("editor");
-            const allOls = editor ? Array.from(editor.querySelectorAll("ol")) : [];
-            if (allOls.length > 0) allOls[allOls.length - 1].type = type;
-          }
-        }, 0);
+            if (editor) {
+              const ols = editor.querySelectorAll("ol");
+              const lastOl = ols[ols.length - 1];
+              if (lastOl) {
+                lastOl.type = numType;
+              }
+            }
+          } catch(e) { console.error("Number type error:", e); }
+        }, 10);
       }
       autosave();
       updateRibbonFormatting();
@@ -1778,15 +1781,17 @@ function showEditorContextMenu(e) {
       if (Editor?.restoreSelection) Editor.restoreSelection();
       exec('insertUnorderedList');
       setTimeout(() => {
-        const sel = window.getSelection();
-        const currentUl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest('ul') : null;
-        const editor = el("editor");
-        const allUls = editor ? Array.from(editor.querySelectorAll("ul")) : [];
-        const targetUl = currentUl || allUls[allUls.length - 1];
-        if (targetUl) {
-          targetUl.style.listStyleType = bulletChar === "•" ? "disc" : bulletChar === "○" ? "circle" : "square";
-        }
-      }, 0);
+        try {
+          const editor = el("editor");
+          if (editor) {
+            const uls = editor.querySelectorAll("ul");
+            const lastUl = uls[uls.length - 1];
+            if (lastUl) {
+              lastUl.style.listStyleType = bulletChar === "•" ? "disc" : bulletChar === "○" ? "circle" : "square";
+            }
+          }
+        } catch(e) { console.error("Context bullet style error:", e); }
+      }, 10);
       autosave();
       updateRibbonFormatting();
       closeEditorContextMenu();
@@ -1855,18 +1860,19 @@ function showEditorContextMenu(e) {
     b.onclick = (ev) => {
       ev.stopPropagation();
       if (Editor?.restoreSelection) Editor.restoreSelection();
-      const sel = window.getSelection();
-      const currentOl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest('ol') : null;
       exec('insertOrderedList');
       setTimeout(() => {
-        if (currentOl) {
-          currentOl.type = num.type;
-        } else {
+        try {
           const editor = el("editor");
-          const allOls = editor ? Array.from(editor.querySelectorAll("ol")) : [];
-          if (allOls.length > 0) allOls[allOls.length - 1].type = num.type;
-        }
-      }, 0);
+          if (editor) {
+            const ols = editor.querySelectorAll("ol");
+            const lastOl = ols[ols.length - 1];
+            if (lastOl) {
+              lastOl.type = num.type;
+            }
+          }
+        } catch(e) { console.error("Context number type error:", e); }
+      }, 10);
       autosave();
       updateRibbonFormatting();
       closeEditorContextMenu();
