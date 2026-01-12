@@ -1021,7 +1021,16 @@ function wireHomeRibbon() {
         exec("insertUnorderedList");
       } else {
         exec("insertUnorderedList");
-        // Note: Basic bullet support. Advanced bullet types would need custom implementation
+        setTimeout(() => {
+          const sel = window.getSelection();
+          const currentUl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest("ul") : null;
+          const editor = el("editor");
+          const allUls = editor ? Array.from(editor.querySelectorAll("ul")) : [];
+          const targetUl = currentUl || allUls[allUls.length - 1];
+          if (targetUl) {
+            targetUl.style.listStyleType = type === "•" ? "disc" : type === "○" ? "circle" : "square";
+          }
+        }, 0);
       }
       autosave();
       updateRibbonFormatting();
@@ -1048,8 +1057,18 @@ function wireHomeRibbon() {
       if (type === "remove") {
         exec("insertOrderedList");
       } else {
+        const sel = window.getSelection();
+        const currentOl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest("ol") : null;
         exec("insertOrderedList");
-        // Note: Basic numbering support. Advanced number types would need custom implementation
+        setTimeout(() => {
+          if (currentOl) {
+            currentOl.type = type;
+          } else {
+            const editor = el("editor");
+            const allOls = editor ? Array.from(editor.querySelectorAll("ol")) : [];
+            if (allOls.length > 0) allOls[allOls.length - 1].type = type;
+          }
+        }, 0);
       }
       autosave();
       updateRibbonFormatting();
@@ -1754,7 +1773,24 @@ function showEditorContextMenu(e) {
     b.style.textAlign = 'left';
     b.style.fontSize = '12px';
     b.textContent = bulletChar + ' Bullet';
-    b.onclick = (ev) => { ev.stopPropagation(); if (Editor?.restoreSelection) Editor.restoreSelection(); exec('insertUnorderedList'); autosave(); updateRibbonFormatting(); closeEditorContextMenu(); };
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      if (Editor?.restoreSelection) Editor.restoreSelection();
+      exec('insertUnorderedList');
+      setTimeout(() => {
+        const sel = window.getSelection();
+        const currentUl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest('ul') : null;
+        const editor = el("editor");
+        const allUls = editor ? Array.from(editor.querySelectorAll("ul")) : [];
+        const targetUl = currentUl || allUls[allUls.length - 1];
+        if (targetUl) {
+          targetUl.style.listStyleType = bulletChar === "•" ? "disc" : bulletChar === "○" ? "circle" : "square";
+        }
+      }, 0);
+      autosave();
+      updateRibbonFormatting();
+      closeEditorContextMenu();
+    };
     b.addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
     bulletMenuContainer.appendChild(b);
   });
@@ -1816,7 +1852,25 @@ function showEditorContextMenu(e) {
     b.style.textAlign = 'left';
     b.style.fontSize = '12px';
     b.textContent = num.label;
-    b.onclick = (ev) => { ev.stopPropagation(); if (Editor?.restoreSelection) Editor.restoreSelection(); exec('insertOrderedList'); autosave(); updateRibbonFormatting(); closeEditorContextMenu(); };
+    b.onclick = (ev) => {
+      ev.stopPropagation();
+      if (Editor?.restoreSelection) Editor.restoreSelection();
+      const sel = window.getSelection();
+      const currentOl = sel.rangeCount > 0 ? sel.getRangeAt(0).commonAncestorContainer.closest('ol') : null;
+      exec('insertOrderedList');
+      setTimeout(() => {
+        if (currentOl) {
+          currentOl.type = num.type;
+        } else {
+          const editor = el("editor");
+          const allOls = editor ? Array.from(editor.querySelectorAll("ol")) : [];
+          if (allOls.length > 0) allOls[allOls.length - 1].type = num.type;
+        }
+      }, 0);
+      autosave();
+      updateRibbonFormatting();
+      closeEditorContextMenu();
+    };
     b.addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
     numberMenuContainer.appendChild(b);
   });
