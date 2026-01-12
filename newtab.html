@@ -1,0 +1,375 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini Note</title>
+  <link rel="icon" type="image/png" href="icons/icon128.png" />
+  <link rel="shortcut icon" href="icons/icon128.png" />
+  <link rel="apple-touch-icon" href="icons/icon128.png" />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="stylesheet" href="fonts.css" />
+  <link rel="stylesheet" href="newtab.css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="tabbar">
+      <button id="sidebar-toggle" class="icon-flat" title="Toggle sidebar">☰</button>
+
+      <div class="app-title">📝 Mini Note</div>
+
+      <nav class="tabs" aria-label="Top tabs">
+        <button class="tab top-tab active" data-tab="home">Home</button>
+        <button class="tab top-tab" data-tab="insert">Insert</button>
+        <button class="tab top-tab" data-tab="draw">Draw</button>
+        <button class="tab top-tab" data-tab="view">View</button>
+        <button class="tab top-tab" data-tab="backup">Backup</button>
+      </nav>
+
+      <div class="searchbox" title="Search pages">
+        <span class="bulb">💡</span>
+        <input id="search" placeholder="Tell me what you want to do" />
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+    </div>
+
+    <!-- Home ribbon -->
+    <section class="ribbon" id="ribbon-home">
+      <div class="group">
+        <div class="group-row">
+          <select id="font-family" class="sel" title="Font">
+            <!-- System Fonts -->
+            <option>Calibri Light</option>
+            <option>Calibri</option>
+            <option>Arial</option>
+            <option>Times New Roman</option>
+            <option>Verdana</option>
+            <option>Georgia</option>
+            <option>Consolas</option>
+            
+            <!-- Google Fonts - Sans Serif -->
+            <option>Roboto</option>
+            <option>Open Sans</option>
+            <option>Lato</option>
+            <option>Poppins</option>
+            <option>Inter</option>
+            
+            <!-- Google Fonts - Serif -->
+            <option>Playfair Display</option>
+            <option>Merriweather</option>
+            <option>IBM Plex Serif</option>
+            
+            <!-- Google Fonts - Monospace -->
+            <option>Fira Code</option>
+            <option>Inconsolata</option>
+          </select>
+
+          <select id="font-size" class="sel" title="Size">
+            <option value="10">10</option>
+            <option value="12">12</option>
+            <option value="14">14</option>
+            <option value="15" selected>15</option>
+            <option value="16">16</option>
+            <option value="18">18</option>
+            <option value="20">20</option>
+            <option value="24">24</option>
+            <option value="28">28</option>
+            <option value="32">32</option>
+          </select>
+
+          <button class="rb" id="fmt-bold" title="Bold"><b>B</b></button>
+          <button class="rb" id="fmt-italic" title="Italic"><i>I</i></button>
+          <button class="rb" id="fmt-underline" title="Underline"><u>U</u></button>
+
+          <div class="split" title="Text color">
+            <label class="mini">A</label>
+            <input id="fmt-color" type="color" class="color-input" value="#111827" />
+            <button id="fmt-color-clear" class="rb" title="Clear text color" style="padding:4px 6px; font-size:11px;">✕</button>
+          </div>
+          <div class="split" title="Highlight">
+            <label class="mini">🖍</label>
+            <input id="fmt-highlight" type="color" class="color-input" value="#fff59d" />
+            <button id="fmt-highlight-clear" class="rb" title="Clear highlight" style="padding:4px 6px; font-size:11px;">✕</button>
+          </div>
+
+          <div class="dropdown-wrapper" title="Bullets">
+            <button class="rb" id="fmt-bullets">• List ▼</button>
+            <div id="bullets-dropdown" class="dropdown-menu hidden">
+              <button data-bullet-type="•">• Bullet</button>
+              <button data-bullet-type="○">○ Circle</button>
+              <button data-bullet-type="■">■ Square</button>
+              <button data-bullet-type="remove">Remove Bullets</button>
+            </div>
+          </div>
+
+          <div class="dropdown-wrapper" title="Numbering">
+            <button class="rb" id="fmt-number">1. List ▼</button>
+            <div id="number-dropdown" class="dropdown-menu hidden">
+              <button data-number-type="1">1. 2. 3.</button>
+              <button data-number-type="a">a. b. c.</button>
+              <button data-number-type="i">i. ii. iii.</button>
+              <button data-number-type="A">A. B. C.</button>
+              <button data-number-type="I">I. II. III.</button>
+              <button data-number-type="remove">Remove Numbering</button>
+            </div>
+          </div>
+
+          <button class="rb" id="fmt-checkbox" title="Checkbox">☐</button>
+
+          <button class="rb" id="align-left" title="Align left">⯇</button>
+          <button class="rb" id="align-center" title="Center">≡</button>
+          <button class="rb" id="align-right" title="Align right">⯈</button>
+        </div>
+        <div class="group-title">Font</div>
+      </div>
+
+      <div class="group">
+        <div class="group-row">
+          <button class="rb" id="undo" title="Undo">↶</button>
+          <button class="rb" id="redo" title="Redo">↷</button>
+          <button class="rb" id="clear-format" title="Clear formatting">Clear</button>
+        </div>
+        <div class="group-title">Editing</div>
+      </div>
+    </section>
+
+    <!-- Insert ribbon -->
+    <section class="ribbon hidden" id="ribbon-insert">
+      <div class="group">
+        <div class="group-row">
+          <button class="rb" id="btn-insert-table">Table</button>
+          <button class="rb" id="btn-insert-picture">Picture</button>
+          <button class="rb" id="btn-insert-link">Link</button>
+          <button class="rb" id="btn-insert-audio">Audio</button>
+        </div>
+        <div class="group-title">Insert</div>
+      </div>
+      <div class="group">
+        <div class="group-row">
+          <button class="rb" id="btn-insert-symbol">Symbol</button>
+          <button class="rb" id="btn-insert-emoji">Emoji</button>
+          <button class="rb" id="btn-insert-math">Math Assistant</button>
+        </div>
+        <div class="group-title">Symbols</div>
+      </div>
+    </section>
+
+    <!-- Draw ribbon -->
+    <section class="ribbon hidden" id="ribbon-draw">
+      <div class="group">
+        <div class="group-row">
+          <button class="rb" id="tool-select">Select</button>
+          <button class="rb" id="tool-pen">Pen</button>
+          <button class="rb" id="tool-highlighter">Highlighter</button>
+          <button class="rb" id="tool-eraser">Eraser</button>
+        </div>
+        <div class="group-title">Tools</div>
+      </div>
+
+      <div class="group">
+        <div class="group-row">
+          <button class="color-dot" data-color="#111111" title="Black"></button>
+          <button class="color-dot" data-color="#2563eb" title="Blue"></button>
+          <button class="color-dot" data-color="#16a34a" title="Green"></button>
+          <button class="color-dot" data-color="#dc2626" title="Red"></button>
+
+          <select id="stroke-width" class="sel" title="Stroke width">
+            <option value="2">2px</option>
+            <option value="4" selected>4px</option>
+            <option value="8">8px</option>
+            <option value="12">12px</option>
+          </select>
+
+          <button class="rb" id="toggle-ruler">Ruler</button>
+          <button class="rb" id="clear-drawing">Clear</button>
+        </div>
+        <div class="group-title">Ink</div>
+      </div>
+    </section>
+
+    <!-- View ribbon -->
+    <section class="ribbon hidden" id="ribbon-view">
+      <div class="group">
+        <div class="group-row">
+          <button class="rb" id="toggle-sidebar">Toggle sidebar</button>
+        </div>
+        <div class="group-title">Layout</div>
+      </div>
+
+      <div class="group">
+        <div class="group-row radio-row">
+          <button class="radio" data-theme="light"><span class="check">✓</span> Light</button>
+          <button class="radio" data-theme="dark"><span class="check">✓</span> Dark</button>
+          <button class="radio" data-theme="system"><span class="check">✓</span> System</button>
+        </div>
+        <div class="group-title">Theme</div>
+      </div>
+    </section>
+
+    <!-- Backup ribbon -->
+    <section class="ribbon hidden" id="ribbon-backup">
+      <div class="group">
+        <div class="group-row">
+          <button class="rb" id="backup-export">Export</button>
+          <button class="rb" id="backup-import">Import</button>
+        </div>
+        <div class="group-title">Backup</div>
+      </div>
+    </section>
+  </header>
+
+  <main class="layout">
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-actions">
+        <button id="add-folder">+ Collection</button>
+        <button id="add-page">+ Page</button>
+      </div>
+      <div id="tree" class="tree"></div>
+    </aside>
+    <div class="sidebar-divider" id="sidebar-divider"></div>
+
+    <section class="content">
+      <div class="content-header">
+        <div id="breadcrumb" class="breadcrumb"></div>
+        <input id="page-title" class="title-input" placeholder="Page title" />
+        <div class="timestamps" id="page-timestamps">
+          <div id="created-info" class="timestamp-line"></div>
+          <div id="updated-info" class="timestamp-line"></div>
+        </div>
+        <div class="view-tabs">
+          <button class="view-btn active" data-view="note">Notepad</button>
+          <button class="view-btn" data-view="todo">To-Do</button>
+        </div>
+      </div>
+
+      <div id="note-view" class="view">
+        <div id="editor" class="editor" contenteditable="true"></div>
+        <div class="draw-layer">
+          <canvas id="draw-canvas"></canvas>
+          <div id="ruler" class="ruler hidden"></div>
+        </div>
+      </div>
+
+      <div id="todo-view" class="view hidden">
+        <div class="todo-bar">
+          <input id="todo-input" placeholder="Add a task and press Enter..." />
+        </div>
+        <div class="kanban-board">
+          <div class="kanban-column">
+            <div class="kanban-column-title">To Do <span class="kanban-column-count">(<span id="todo-count">0</span>)</span></div>
+            <ul id="todo-list" class="todo-list"></ul>
+          </div>
+          <div class="kanban-column">
+            <div class="kanban-column-title">In Progress <span class="kanban-column-count">(<span id="inprogress-count">0</span>)</span></div>
+            <ul id="inprogress-list" class="todo-list"></ul>
+          </div>
+          <div class="kanban-column">
+            <div class="kanban-column-title">Completed <span class="kanban-column-count">(<span id="completed-count">0</span>)</span></div>
+            <ul id="completed-list" class="todo-list"></ul>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <input id="file-picker" type="file" accept="image/*" hidden />
+  <input id="import-json" type="file" accept="application/json" hidden />
+
+  <!-- Center modal (single input) -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-title" id="modal-title">Title</div>
+      <div class="modal-msg" id="modal-msg"></div>
+
+      <div class="modal-field" id="modal-field">
+        <label class="modal-label" id="modal-label" for="modal-input">Name</label>
+        <input id="modal-input" class="modal-input" />
+      </div>
+
+      <div class="modal-actions">
+        <button id="modal-cancel" class="btn ghost">Cancel</button>
+        <button id="modal-alt" class="btn danger hidden">Delete</button>
+        <button id="modal-ok" class="btn primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Symbol dialog -->
+  <div id="symbol-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <div class="dialog-header">
+        <div class="dialog-title">Symbol</div>
+        <button class="dialog-close" data-close="symbol-dialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div id="symbol-grid" class="grid"></div>
+        <div class="dialog-meta">
+          <div class="meta-label">Unicode name:</div>
+          <div id="symbol-name" class="meta-value"></div>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button id="symbol-insert" class="btn primary">Insert</button>
+        <button class="btn" data-close="symbol-dialog">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Emoji dialog -->
+  <div id="emoji-dialog" class="dialog-overlay hidden">
+    <div class="dialog dialog-large">
+      <div class="dialog-header">
+        <div class="dialog-title">Emoji</div>
+        <button class="dialog-close" data-close="emoji-dialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="emoji-tabs" id="emoji-tabs"></div>
+        <div id="emoji-grid" class="grid emoji-grid"></div>
+      </div>
+      <div class="dialog-footer">
+        <button id="emoji-insert" class="btn primary">Insert</button>
+        <button class="btn" data-close="emoji-dialog">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Math Assistant dialog -->
+  <div id="math-dialog" class="dialog-overlay hidden">
+    <div class="dialog dialog-tall">
+      <div class="dialog-header">
+        <div class="dialog-title">Math Assistant</div>
+        <button class="dialog-close" data-close="math-dialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <ol class="math-steps">
+          <li><b>Write</b> your equation (type below)</li>
+          <li><b>Select</b> and insert into the note</li>
+        </ol>
+
+        <textarea id="math-input" class="math-input" placeholder="Example: x + y = 3"></textarea>
+
+        <div class="math-examples">
+          <div class="math-ex-title">Quick Start Examples</div>
+          <button class="math-ex" data-ex="Solve for x, y&#10;x + y = 3&#10;x - y = 1">Solve for x, y</button>
+          <button class="math-ex" data-ex="Graph inequality&#10;y &gt; a + b/x">Graph Inequality</button>
+          <button class="math-ex" data-ex="Verify&#10;(2^3·2^8)/(2^5) = 2^6">Verify</button>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button id="math-insert" class="btn primary">Insert</button>
+        <button class="btn" data-close="math-dialog">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="storage.js"></script>
+  <script src="draw.js"></script>
+  <script src="editor.js"></script>
+  <script src="newtab.js"></script>
+</body>
+</html>

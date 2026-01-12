@@ -1,0 +1,33 @@
+/* Google Fonts Import */
+@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700;900&family=Open+Sans:wght@300;400;600;700;800&family=Lato:wght@300;400;700;900&family=Playfair+Display:wght@400;700;900&family=Merriweather:wght@300;400;700&family=Fira+Code:wght@400;500;700&family=Poppins:wght@300;400;600;700;900&family=Inter:wght@300;400;500;700;900&family=Inconsolata:wght@400;700&family=IBM+Plex+Serif:wght@300;400;600;700&display=swap');
+
+/* Font family definitions */
+:root {
+  /* Sans-serif */
+  --font-roboto: 'Roboto', sans-serif;
+  --font-open-sans: 'Open Sans', sans-serif;
+  --font-lato: 'Lato', sans-serif;
+  --font-poppins: 'Poppins', sans-serif;
+  --font-inter: 'Inter', sans-serif;
+
+  /* Serif */
+  --font-playfair: 'Playfair Display', serif;
+  --font-merriweather: 'Merriweather', serif;
+  --font-plex-serif: 'IBM Plex Serif', serif;
+
+  /* Monospace */
+  --font-fira-code: 'Fira Code', monospace;
+  --font-inconsolata: 'Inconsolata', monospace;
+}
+
+/* Quick utility classes (optional) */
+.font-roboto { font-family: var(--font-roboto); }
+.font-open-sans { font-family: var(--font-open-sans); }
+.font-lato { font-family: var(--font-lato); }
+.font-poppins { font-family: var(--font-poppins); }
+.font-inter { font-family: var(--font-inter); }
+.font-playfair { font-family: var(--font-playfair); }
+.font-merriweather { font-family: var(--font-merriweather); }
+.font-plex-serif { font-family: var(--font-plex-serif); }
+.font-fira-code { font-family: var(--font-fira-code); }
+.font-inconsolata { font-family: var(--font-inconsolata); }

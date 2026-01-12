@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Mini Note</title>
+  <link rel="icon" type="image/png" href="icons/icon128.png" />
+  <link rel="shortcut icon" href="icons/icon128.png" />
+  <link rel="apple-touch-icon" href="icons/icon128.png" />
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="stylesheet" href="newtab.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="tabbar">
+      <button id="sidebar-toggle" class="icon-flat" title="Toggle sidebar">☰</button>
+
+      <div class="app-title">📝 Mini Note</div>
+
+      <nav class="tabs" aria-label="Top tabs">
+        <button class="tab top-tab active" data-tab="home">Home</button>
+        <button class="tab top-tab" data-tab="insert">Insert</button>
+        <button class="tab top-tab" data-tab="draw">Draw</button>
+        <button class="tab top-tab" data-tab="view">View</button>
+        <button class="tab top-tab" data-tab="backup">Backup</button>
+      </nav>
+
+      <div class="searchbox" title="Search pages">
+        <span class="bulb">💡</span>
+        <input id="search" placeholder="Tell me what you want to do" />
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+    </div>
+
+n... (truncated for brevity)
