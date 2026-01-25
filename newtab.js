@@ -250,6 +250,7 @@ function applyInlineStyle(styleObj) {
     newRange.collapse(true);
     sel.removeAllRanges();
     sel.addRange(newRange);
+    if (Editor?.saveSelection) Editor.saveSelection();
     return;
   }
 
@@ -259,11 +260,12 @@ function applyInlineStyle(styleObj) {
   span.appendChild(frag);
   range.insertNode(span);
 
+  // Keep the styled content selected so user can see the change
   const newRange = document.createRange();
   newRange.selectNodeContents(span);
-  newRange.collapse(false);
   sel.removeAllRanges();
   sel.addRange(newRange);
+  if (Editor?.saveSelection) Editor.saveSelection();
 }
 
 function exec(cmd) {
@@ -554,6 +556,9 @@ async function openPage(pageId) {
   state.selectedFolderId = page.folderId;
   await Storage.kvSet("activePageId", pageId);
 
+  // Hide welcome screen and show content
+  hideWelcomeScreen();
+
   // Update breadcrumb
   const folder = state.folders.find(f => f.id === page.folderId);
   const breadcrumb = el("breadcrumb");
@@ -571,6 +576,9 @@ async function openPage(pageId) {
   el("editor").innerHTML = page.noteHtml || "";
   await Draw.loadDataUrl(page.drawingDataUrl || "");
 
+  // Initialize table drag and drop for any tables in the loaded content
+  setTimeout(() => initTableDragDrop(), 100);
+
   renderTree();
   setView(state.activeView);
 }
@@ -583,6 +591,25 @@ function setView(view) {
   el("todo-view").classList.toggle("hidden", view !== "todo");
 
   if (view === "todo") renderTodos();
+}
+
+function showWelcomeScreen() {
+  el("welcome-screen").classList.remove("hidden");
+  el("note-view").classList.add("hidden");
+  el("todo-view").classList.add("hidden");
+  el("content-header").classList.add("hidden");
+}
+
+function hideWelcomeScreen() {
+  el("welcome-screen").classList.add("hidden");
+  el("content-header").classList.remove("hidden");
+}
+
+function closePage() {
+  state.activePage = null;
+  Storage.kvSet("activePageId", null);
+  showWelcomeScreen();
+  renderTree();
 }
 
 function renderTodos() {
@@ -610,42 +637,213 @@ function renderTodos() {
 
 function renderTodoColumn(listEl, todos, status) {
   listEl.innerHTML = "";
-  
+
   for (const t of todos) {
     const li = document.createElement("li");
     li.className = "todo-item";
-    
+    li.draggable = true;
+    li.dataset.todoId = t.id;
+
+    // Determine task urgency based on end date (only for non-completed tasks)
+    if (t.endDate && status !== "completed") {
+      const today = new Date(new Date().toDateString());
+      const endDate = new Date(t.endDate);
+      const diffTime = endDate - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays <= 0) {
+        // Overdue - due today or past due date (RED)
+        li.classList.add("overdue");
+      } else if (diffDays <= 60) {
+        // 1-60 days away - green (urgent)
+        li.classList.add("task-urgent");
+      } else {
+        // More than 60 days away - blue (far future)
+        li.classList.add("task-far");
+      }
+    }
+
+    // Build task HTML with name and optional description
+    const taskName = t.name || t.text || "Untitled Task";
+
+    // Truncate description to first 50 characters for card display
+    let taskDescription = "";
+    if (t.description) {
+      const truncated = t.description.length > 50
+        ? t.description.substring(0, 50) + "..."
+        : t.description;
+      taskDescription = `<div class="todo-description" title="${escapeHtml(t.description)}">${escapeHtml(truncated)}</div>`;
+    }
+
+    const taskDates = (t.startDate || t.endDate) ? `
+      <div class="todo-dates">
+        ${t.startDate ? `<span>📅 ${formatDate(t.startDate)}</span>` : ""}
+        ${t.endDate ? `<span>⏰ ${formatDate(t.endDate)}</span>` : ""}
+      </div>
+    ` : "";
+
     li.innerHTML = `
-      <div></div>
+      <div class="todo-content">
+        <div class="todo-name">${escapeHtml(taskName)}</div>
+        ${taskDescription}
+        ${taskDates}
+      </div>
       <button title="Delete" class="icon-btn danger">✕</button>
     `;
-    li.querySelector("div").textContent = t.text;
-    
-    // Click on task to move to next status
-    li.addEventListener("click", async (e) => {
+
+    // Click on task to edit
+    li.addEventListener("click", (e) => {
       if (e.target.tagName === "BUTTON") return;
-      
-      if (status === "todo") {
-        t.status = "inprogress";
-      } else if (status === "inprogress") {
-        t.status = "completed";
-      } else if (status === "completed") {
-        t.status = "todo";
-      }
-      
-      await saveActivePage();
-      renderTodos();
+      openTaskModal(t);
     });
-    
+
+    // Drag start
+    li.addEventListener("dragstart", (e) => {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", t.id);
+      li.classList.add("dragging");
+    });
+
+    // Drag end
+    li.addEventListener("dragend", (e) => {
+      li.classList.remove("dragging");
+    });
+
+    // Delete button
     li.querySelector("button").onclick = async (e) => {
       e.stopPropagation();
       state.activePage.todos = state.activePage.todos.filter(x => x.id !== t.id);
       await saveActivePage();
       renderTodos();
     };
-    
+
     listEl.appendChild(li);
   }
+
+  // Setup drop zone for this column
+  setupDropZone(listEl, status);
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function setupDropZone(listEl, targetStatus) {
+  // Dragover - allow drop
+  listEl.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    listEl.classList.add("drag-over");
+  });
+
+  // Dragleave - remove highlight
+  listEl.addEventListener("dragleave", (e) => {
+    // Only remove if leaving the list itself, not child elements
+    if (e.target === listEl) {
+      listEl.classList.remove("drag-over");
+    }
+  });
+
+  // Drop - move the task
+  listEl.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    listEl.classList.remove("drag-over");
+
+    const todoId = e.dataTransfer.getData("text/plain");
+    if (!todoId || !state.activePage) return;
+
+    // Find and update the todo
+    const todo = state.activePage.todos.find(t => t.id === todoId);
+    if (todo) {
+      todo.status = targetStatus;
+      await saveActivePage();
+      renderTodos();
+    }
+  });
+}
+
+/* ---------------- Task Modal ---------------- */
+
+let currentTask = null;
+
+function openTaskModal(task) {
+  currentTask = task;
+  const modal = el("task-modal");
+  const titleEl = el("task-modal-title");
+
+  if (task) {
+    // Edit existing task
+    titleEl.textContent = "Edit Task";
+    el("task-name").value = task.name || task.text || "";
+    el("task-description").value = task.description || "";
+    el("task-start-date").value = task.startDate || "";
+    el("task-end-date").value = task.endDate || "";
+    el("task-status").value = task.status || "todo";
+  } else {
+    // Create new task
+    titleEl.textContent = "Add Task";
+    el("task-name").value = "";
+    el("task-description").value = "";
+    el("task-start-date").value = "";
+    el("task-end-date").value = "";
+    el("task-status").value = "todo";
+  }
+
+  modal.classList.remove("hidden");
+  el("task-name").focus();
+}
+
+function closeTaskModal() {
+  el("task-modal").classList.add("hidden");
+  currentTask = null;
+}
+
+async function saveTask() {
+  const name = el("task-name").value.trim();
+  if (!name) {
+    toast("Task name is required");
+    return;
+  }
+
+  const description = el("task-description").value.trim();
+  const startDate = el("task-start-date").value;
+  const endDate = el("task-end-date").value;
+  const status = el("task-status").value;
+
+  // Validate dates
+  if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+    toast("Start date cannot be after end date");
+    return;
+  }
+
+  if (currentTask) {
+    // Update existing task
+    currentTask.name = name;
+    currentTask.text = name; // Keep for backwards compatibility
+    currentTask.description = description;
+    currentTask.startDate = startDate;
+    currentTask.endDate = endDate;
+    currentTask.status = status;
+  } else {
+    // Create new task
+    state.activePage.todos = state.activePage.todos || [];
+    state.activePage.todos.push({
+      id: Storage.uid(),
+      name,
+      text: name,
+      description,
+      startDate,
+      endDate,
+      status
+    });
+  }
+
+  await saveActivePage();
+  renderTodos();
+  closeTaskModal();
+  toast(currentTask ? "Task updated" : "Task created");
 }
 
 async function saveActivePage() {
@@ -780,14 +978,29 @@ function buildEmoji() {
 
 function wireDialogs() {
   document.querySelectorAll("[data-close]").forEach(b => {
-    b.addEventListener("click", () => hideDialog(b.dataset.close));
-  });
-
-  ["symbol-dialog","emoji-dialog","math-dialog"].forEach(id => {
-    el(id).addEventListener("click", (e) => {
-      if (e.target === el(id)) hideDialog(id);
+    b.addEventListener("click", () => {
+      if (b.dataset.close === "task-modal") {
+        closeTaskModal();
+      } else {
+        hideDialog(b.dataset.close);
+      }
     });
   });
+
+  ["symbol-dialog","emoji-dialog","task-modal"].forEach(id => {
+    el(id).addEventListener("click", (e) => {
+      if (e.target === el(id)) {
+        if (id === "task-modal") {
+          closeTaskModal();
+        } else {
+          hideDialog(id);
+        }
+      }
+    });
+  });
+
+  // Task modal save button
+  el("task-save").onclick = () => saveTask();
 
   el("symbol-insert").onclick = () => {
     if (!state.selectedSymbol) return;
@@ -800,20 +1013,6 @@ function wireDialogs() {
     if (!state.selectedEmoji) return;
     Editor.insertText(state.selectedEmoji);
     hideDialog("emoji-dialog");
-    autosave();
-  };
-
-  document.querySelectorAll(".math-ex").forEach(b => {
-    b.onclick = () => {
-      el("math-input").value = (b.dataset.ex || "").replace(/&#10;/g, "\n");
-    };
-  });
-
-  el("math-insert").onclick = () => {
-    const txt = el("math-input").value.trim();
-    if (!txt) return;
-    Editor.insertHTML(`<pre class="math-block">${escapeHtml(txt)}</pre><p></p>`);
-    hideDialog("math-dialog");
     autosave();
   };
 }
@@ -922,47 +1121,122 @@ const ColorManager = (() => {
 
   function apply(type, col) {
     if (Editor?.restoreSelection) Editor.restoreSelection();
+
+    const editor = el("editor");
+    if (!editor) return;
+
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) {
+      // No selection - focus editor
+      editor.focus();
+      return;
+    }
+
+    const range = sel.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) {
+      // Selection not in editor - focus editor
+      editor.focus();
+      return;
+    }
+
+    // Apply the color
     if (type === 'color') applyInlineStyle({ color: col });
     else applyInlineStyle({ backgroundColor: col });
+
     autosave();
     try { updateRibbonFormatting(); } catch (e) {}
   }
 
   function clear(type) {
     if (Editor?.restoreSelection) Editor.restoreSelection();
+    const editor = el("editor");
+    if (!editor) return;
+
     const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
+    if (!sel || sel.rangeCount === 0) {
+      editor.focus();
+      return;
+    }
+
     const range = sel.getRangeAt(0);
-    const content = range.extractContents();
-    const wrapper = document.createElement('div');
-    wrapper.appendChild(content);
-
-    if (type === 'color') {
-      // Remove color from all elements (don't set 'inherit' - just clear inline style)
-      wrapper.querySelectorAll('*').forEach(el => { 
-        el.style.removeProperty('color');
-      });
-    } else {
-      // Remove backgroundColor from all elements
-      wrapper.querySelectorAll('*').forEach(el => { 
-        el.style.removeProperty('backgroundColor');
-      });
+    if (!editor.contains(range.commonAncestorContainer)) {
+      editor.focus();
+      return;
     }
 
-    // Re-insert all nodes and preserve selection
-    let lastNode = null;
-    while (wrapper.firstChild) {
-      lastNode = range.insertNode(wrapper.firstChild);
+    // Handle empty selection
+    if (range.collapsed) {
+      editor.focus();
+      return;
     }
-    
-    // Restore selection to cover the modified content
-    if (lastNode) {
-      const newRange = document.createRange();
-      newRange.selectNodeContents(range.commonAncestorContainer);
+
+    // Clone the range to preserve the original selection
+    const originalRange = range.cloneRange();
+
+    // Get all element nodes in the selection
+    const selectedNodes = new Set();
+    const commonAncestor = range.commonAncestorContainer;
+
+    // Helper to collect all element nodes
+    function collectNodes(node) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        selectedNodes.add(node);
+      }
+      if (node.childNodes) {
+        for (let child of node.childNodes) {
+          collectNodes(child);
+        }
+      }
+    }
+
+    // Collect from common ancestor
+    if (commonAncestor.nodeType === Node.ELEMENT_NODE) {
+      collectNodes(commonAncestor);
+    } else if (commonAncestor.parentElement) {
+      collectNodes(commonAncestor.parentElement);
+    }
+
+    // Also check start and end containers and their parents
+    let node = range.startContainer;
+    while (node && editor.contains(node)) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        selectedNodes.add(node);
+      }
+      node = node.parentElement;
+    }
+
+    node = range.endContainer;
+    while (node && editor.contains(node)) {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        selectedNodes.add(node);
+      }
+      node = node.parentElement;
+    }
+
+    // Clear the styles from all collected nodes
+    const clearProperties = type === 'color'
+      ? ['color']
+      : ['backgroundColor', 'background-color'];
+
+    selectedNodes.forEach(node => {
+      if (node.style) {
+        clearProperties.forEach(prop => {
+          node.style.removeProperty(prop);
+        });
+      }
+    });
+
+    // Restore the original selection
+    try {
       sel.removeAllRanges();
-      sel.addRange(newRange);
+      sel.addRange(originalRange);
+    } catch (e) {
+      // If restoring fails, just focus the editor
+      editor.focus();
     }
-    
+
+    if (Editor?.saveSelection) Editor.saveSelection();
+
     autosave();
     try { updateRibbonFormatting(); } catch (e) {}
   }
@@ -992,14 +1266,31 @@ function wireHomeRibbon() {
   el("fmt-italic").onclick = () => { if (Editor?.restoreSelection) Editor.restoreSelection(); exec("italic"); autosave(); updateRibbonFormatting(); };
   el("fmt-underline").onclick = () => { if (Editor?.restoreSelection) Editor.restoreSelection(); exec("underline"); autosave(); updateRibbonFormatting(); };
 
-  el("fmt-color").oninput = (e) => { ColorManager.apply('color', e.target.value); };
+  // Text color picker - save selection before opening, apply on input/change
   el("fmt-color").addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); }, { capture: true });
-  el("fmt-color-clear").onclick = (ev) => { ev.preventDefault(); ColorManager.clear('color'); };
+  el("fmt-color").addEventListener('focus', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); }, { capture: true });
+  el("fmt-color").oninput = (e) => { ColorManager.apply('color', e.target.value); };
+  el("fmt-color").onchange = (e) => { ColorManager.apply('color', e.target.value); };
+
+  // Text color label - click to clear color
+  el("fmt-color-label").addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
+  el("fmt-color-label").onclick = (ev) => { ev.preventDefault(); ColorManager.clear('color'); };
+
   el("fmt-color-clear").addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
-  el("fmt-highlight").oninput = (e) => { ColorManager.apply('highlight', e.target.value); };
+  el("fmt-color-clear").onclick = (ev) => { ev.preventDefault(); ColorManager.clear('color'); };
+
+  // Highlight color picker - save selection before opening, apply on input/change
   el("fmt-highlight").addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); }, { capture: true });
-  el("fmt-highlight-clear").onclick = (ev) => { ev.preventDefault(); ColorManager.clear('highlight'); };
+  el("fmt-highlight").addEventListener('focus', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); }, { capture: true });
+  el("fmt-highlight").oninput = (e) => { ColorManager.apply('highlight', e.target.value); };
+  el("fmt-highlight").onchange = (e) => { ColorManager.apply('highlight', e.target.value); };
+
+  // Highlight label - click to clear highlight
+  el("fmt-highlight-label").addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
+  el("fmt-highlight-label").onclick = (ev) => { ev.preventDefault(); ColorManager.clear('highlight'); };
+
   el("fmt-highlight-clear").addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
+  el("fmt-highlight-clear").onclick = (ev) => { ev.preventDefault(); ColorManager.clear('highlight'); };
 
   // Bullet dropdown
   el("fmt-bullets").onclick = (ev) => {
@@ -1102,6 +1393,9 @@ function wireHomeRibbon() {
 }
 
 async function insertTableFlow() {
+  // Save selection before modal opens
+  Editor.saveSelection();
+
   const res = await openModal({
     title: "Insert table",
     message: "Type rows x columns (example: 3x3)",
@@ -1116,7 +1410,7 @@ async function insertTableFlow() {
   const rows = Math.max(1, Math.min(20, m ? parseInt(m[1],10) : 3));
   const cols = Math.max(1, Math.min(12, m ? parseInt(m[2],10) : 3));
 
-  let html = `<table><tbody>`;
+  let html = `<table class="resizable-table"><tbody>`;
   for (let r=0; r<rows; r++){
     html += "<tr>";
     for (let c=0; c<cols; c++) html += "<td>&nbsp;</td>";
@@ -1125,9 +1419,15 @@ async function insertTableFlow() {
   html += `</tbody></table><p></p>`;
   Editor.insertHTML(html);
   autosave();
+
+  // Initialize table drag-and-drop after a short delay to ensure DOM is ready
+  setTimeout(() => initTableDragDrop(), 100);
 }
 
 async function insertLinkFlow() {
+  // Save selection before modal opens
+  Editor.saveSelection();
+
   const res = await openModal({
     title: "Insert link",
     message: "Paste a URL (you can edit the text after inserting).",
@@ -1142,15 +1442,119 @@ async function insertLinkFlow() {
   autosave();
 }
 
+/* ---------------- Table Drag and Drop ---------------- */
+
+function initTableDragDrop() {
+  const editor = el("editor");
+  if (!editor) return;
+
+  const tables = editor.querySelectorAll("table.resizable-table");
+  tables.forEach(table => {
+    // Skip if already initialized
+    if (table.dataset.dragInitialized) return;
+    table.dataset.dragInitialized = "true";
+
+    // Make table cells draggable for row reordering
+    const rows = table.querySelectorAll("tbody tr");
+    rows.forEach((row, rowIndex) => {
+      row.draggable = true;
+      row.dataset.rowIndex = rowIndex;
+
+      row.addEventListener("dragstart", (e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/html", row.innerHTML);
+        e.dataTransfer.setData("row-index", rowIndex);
+        row.classList.add("dragging");
+      });
+
+      row.addEventListener("dragend", (e) => {
+        row.classList.remove("dragging");
+        rows.forEach(r => r.classList.remove("drag-over"));
+      });
+
+      row.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+
+        const draggingRow = table.querySelector("tr.dragging");
+        if (draggingRow && draggingRow !== row) {
+          row.classList.add("drag-over");
+        }
+      });
+
+      row.addEventListener("dragleave", (e) => {
+        row.classList.remove("drag-over");
+      });
+
+      row.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const draggingRow = table.querySelector("tr.dragging");
+        if (!draggingRow || draggingRow === row) return;
+
+        const tbody = table.querySelector("tbody");
+        const allRows = Array.from(tbody.querySelectorAll("tr"));
+        const dragIndex = allRows.indexOf(draggingRow);
+        const dropIndex = allRows.indexOf(row);
+
+        if (dragIndex < dropIndex) {
+          tbody.insertBefore(draggingRow, row.nextSibling);
+        } else {
+          tbody.insertBefore(draggingRow, row);
+        }
+
+        row.classList.remove("drag-over");
+        autosave();
+      });
+    });
+
+    // Make columns resizable by dragging column borders
+    const cells = table.querySelectorAll("th, td");
+    cells.forEach((cell, index) => {
+      cell.style.position = "relative";
+
+      // Add resize handle to the right edge of each cell
+      const resizer = document.createElement("div");
+      resizer.className = "table-resize-handle";
+      cell.appendChild(resizer);
+
+      let startX, startWidth;
+
+      resizer.addEventListener("mousedown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        startX = e.pageX;
+        startWidth = cell.offsetWidth;
+
+        const onMouseMove = (e) => {
+          const width = startWidth + (e.pageX - startX);
+          if (width > 30) {
+            cell.style.width = width + "px";
+            cell.style.minWidth = width + "px";
+          }
+        };
+
+        const onMouseUp = () => {
+          document.removeEventListener("mousemove", onMouseMove);
+          document.removeEventListener("mouseup", onMouseUp);
+          autosave();
+        };
+
+        document.addEventListener("mousemove", onMouseMove);
+        document.addEventListener("mouseup", onMouseUp);
+      });
+    });
+  });
+}
+
 function wireInsertRibbon() {
-  el("btn-insert-table").onclick = () => { Editor.saveSelection(); insertTableFlow(); };
+  el("btn-insert-table").onclick = () => insertTableFlow();
   el("btn-insert-picture").onclick = () => Editor.insertPicture();
-  el("btn-insert-link").onclick = () => { Editor.saveSelection(); insertLinkFlow(); };
-  el("btn-insert-audio").onclick = () => Editor.insertAudio();
+  el("btn-insert-link").onclick = () => insertLinkFlow();
 
   el("btn-insert-symbol").onclick = () => { if (Editor?.saveSelection) Editor.saveSelection(); buildSymbolGrid(); showDialog("symbol-dialog"); };
   el("btn-insert-emoji").onclick = () => { if (Editor?.saveSelection) Editor.saveSelection(); buildEmoji(); showDialog("emoji-dialog"); };
-  el("btn-insert-math").onclick = () => { if (Editor?.saveSelection) Editor.saveSelection(); el("math-input").value = ""; showDialog("math-dialog"); };
 }
 
 function wireDrawRibbon() {
@@ -1276,16 +1680,10 @@ function wireEditorAndTodos() {
     b.onclick = () => setView(b.dataset.view);
   });
 
-  el("todo-input").addEventListener("keydown", async (e) => {
-    if (e.key !== "Enter") return;
-    const text = e.target.value.trim();
-    if (!text || !state.activePage) return;
-    state.activePage.todos = state.activePage.todos || [];
-    state.activePage.todos.push({ id: Storage.uid(), text, status: "todo" });
-    e.target.value = "";
-    await saveActivePage();
-    renderTodos();
-  });
+  // Add task button
+  el("add-task-btn").onclick = () => {
+    openTaskModal(null);
+  };
 
   el("search").addEventListener("input", (e) => {
     const query = e.target.value.trim().toLowerCase();
@@ -1635,7 +2033,13 @@ function showEditorContextMenu(e) {
     dot.style.borderRadius = '4px';
     dot.style.cursor = 'pointer';
     dot.title = col;
-    dot.onclick = (ev) => { ev.stopPropagation(); ColorManager.apply('color', col); colorPaletteContainer.classList.add('hidden'); };
+    dot.onclick = (ev) => {
+      ev.stopPropagation();
+      if (Editor?.restoreSelection) Editor.restoreSelection();
+      ColorManager.apply('color', col);
+      colorPaletteContainer.classList.add('hidden');
+      colorPaletteContainer.style.display = 'none';
+    };
     dot.addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
     colorPaletteContainer.appendChild(dot);
   });
@@ -1652,7 +2056,13 @@ function showEditorContextMenu(e) {
   noColorOption.style.gap = '4px';
   noColorOption.textContent = '⭕ No Color';
   noColorOption.style.fontSize = '12px';
-  noColorOption.onclick = (ev) => { ev.stopPropagation(); ColorManager.clear('color'); colorPaletteContainer.classList.add('hidden'); };
+  noColorOption.onclick = (ev) => {
+    ev.stopPropagation();
+    if (Editor?.restoreSelection) Editor.restoreSelection();
+    ColorManager.clear('color');
+    colorPaletteContainer.classList.add('hidden');
+    colorPaletteContainer.style.display = 'none';
+  };
   noColorOption.addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
   colorPaletteContainer.appendChild(noColorOption);
   
@@ -1711,7 +2121,13 @@ function showEditorContextMenu(e) {
     dot.style.borderRadius = '4px';
     dot.style.cursor = 'pointer';
     dot.title = col;
-    dot.onclick = (ev) => { ev.stopPropagation(); ColorManager.apply('highlight', col); highlightPaletteContainer.classList.add('hidden'); };
+    dot.onclick = (ev) => {
+      ev.stopPropagation();
+      if (Editor?.restoreSelection) Editor.restoreSelection();
+      ColorManager.apply('highlight', col);
+      highlightPaletteContainer.classList.add('hidden');
+      highlightPaletteContainer.style.display = 'none';
+    };
     dot.addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
     highlightPaletteContainer.appendChild(dot);
   });
@@ -1728,7 +2144,13 @@ function showEditorContextMenu(e) {
   noHighlightOption.style.gap = '4px';
   noHighlightOption.textContent = '⭕ No Color';
   noHighlightOption.style.fontSize = '12px';
-  noHighlightOption.onclick = (ev) => { ev.stopPropagation(); ColorManager.clear('highlight'); highlightPaletteContainer.classList.add('hidden'); };
+  noHighlightOption.onclick = (ev) => {
+    ev.stopPropagation();
+    if (Editor?.restoreSelection) Editor.restoreSelection();
+    ColorManager.clear('highlight');
+    highlightPaletteContainer.classList.add('hidden');
+    highlightPaletteContainer.style.display = 'none';
+  };
   noHighlightOption.addEventListener('mousedown', (ev) => { if (Editor?.saveSelection) Editor.saveSelection(); ev.preventDefault(); }, { capture: true });
   highlightPaletteContainer.appendChild(noHighlightOption);
   
@@ -1912,8 +2334,8 @@ function showEditorContextMenu(e) {
   toolbar.appendChild(underline);
   toolbar.appendChild(colorDropdown);
   toolbar.appendChild(highlightDropdown);
-  toolbar.appendChild(bullets);
-  toolbar.appendChild(number);
+  toolbar.appendChild(bulletDropdown);
+  toolbar.appendChild(numberDropdown);
   toolbar.appendChild(alignLeft);
   toolbar.appendChild(alignCenter);
   toolbar.appendChild(alignRight);
@@ -1973,7 +2395,7 @@ function showEditorContextMenu(e) {
     await openModal({ title: 'Set proofing language', message: 'Choose language (placeholder).', label: 'Language', value: 'English', okText: 'Set' });
   });
 
-  addItem('Insert Link', async () => { Editor.saveSelection(); await insertLinkFlow(); });
+  addItem('Insert Link', async () => { await insertLinkFlow(); });
 
   addItem('Paragraph Options...', async () => {
     await openModal({ title: 'Paragraph options', message: 'Adjust paragraph settings (placeholder).', label: 'Spacing', value: '1.5', okText: 'Apply' });
@@ -2006,9 +2428,19 @@ async function boot() {
   const firstFolder = state.folders[0];
   const firstPage = firstFolder ? (state.pagesByFolder.get(firstFolder.id) || [])[0] : null;
 
-  if (activeId) await openPage(activeId);
-  else if (firstPage) await openPage(firstPage.id);
-  if (!state.activePage && firstPage) await openPage(firstPage.id);
+  if (activeId) {
+    await openPage(activeId);
+  } else if (firstPage) {
+    await openPage(firstPage.id);
+  } else {
+    // No pages available, show welcome screen
+    showWelcomeScreen();
+  }
+
+  // If still no active page after trying to open, show welcome screen
+  if (!state.activePage) {
+    showWelcomeScreen();
+  }
 }
 
 async function initializeUI() {
@@ -2046,6 +2478,10 @@ async function initializeUI() {
   wireEditorAndTodos();
 
   el("sidebar-toggle").onclick = toggleSidebar;
+  el("close-page-btn").onclick = closePage;
+  el("supporter-btn").onclick = () => {
+    window.open("https://buymeacoffee.com/teamteja3q", "_blank", "noopener,noreferrer");
+  };
 
   const mode = (await Storage.kvGet("themeMode")) || "system";
   applyThemeMode(mode);

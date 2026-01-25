@@ -33,6 +33,22 @@
         <input id="search" placeholder="Tell me what you want to do" />
         <div id="search-results" class="search-results hidden"></div>
       </div>
+
+      <div class="supporter-container">
+        <button id="supporter-btn" class="supporter-btn">
+          ❤️ Become a Supporter
+        </button>
+        <div class="supporter-tooltip">
+          <div class="tooltip-title">Buy me a coffee</div>
+          <div class="tooltip-content">
+            <p><strong>Love what I'm building? Your support means the world!</strong></p>
+            <p class="tooltip-section-title">Become a Supporter</p>
+            <p>-- it helps me stay motivated, keep improving, and bring you even more awesome features.</p>
+            <p>Every bit of support fuels my passion to build better, faster, and with more heart.</p>
+            <p class="tooltip-thanks">Thank you! 🤍 ❤️</p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Home ribbon -->
@@ -84,12 +100,12 @@
           <button class="rb" id="fmt-underline" title="Underline"><u>U</u></button>
 
           <div class="split" title="Text color">
-            <label class="mini">A</label>
+            <label id="fmt-color-label" class="mini" style="cursor:pointer;" title="Click to clear text color">A</label>
             <input id="fmt-color" type="color" class="color-input" value="#111827" />
             <button id="fmt-color-clear" class="rb" title="Clear text color" style="padding:4px 6px; font-size:11px;">✕</button>
           </div>
           <div class="split" title="Highlight">
-            <label class="mini">🖍</label>
+            <label id="fmt-highlight-label" class="mini" style="cursor:pointer;" title="Click to clear highlight">🖍</label>
             <input id="fmt-highlight" type="color" class="color-input" value="#fff59d" />
             <button id="fmt-highlight-clear" class="rb" title="Clear highlight" style="padding:4px 6px; font-size:11px;">✕</button>
           </div>
@@ -142,7 +158,6 @@
           <button class="rb" id="btn-insert-table">Table</button>
           <button class="rb" id="btn-insert-picture">Picture</button>
           <button class="rb" id="btn-insert-link">Link</button>
-          <button class="rb" id="btn-insert-audio">Audio</button>
         </div>
         <div class="group-title">Insert</div>
       </div>
@@ -150,7 +165,6 @@
         <div class="group-row">
           <button class="rb" id="btn-insert-symbol">Symbol</button>
           <button class="rb" id="btn-insert-emoji">Emoji</button>
-          <button class="rb" id="btn-insert-math">Math Assistant</button>
         </div>
         <div class="group-title">Symbols</div>
       </div>
@@ -231,16 +245,23 @@
     <div class="sidebar-divider" id="sidebar-divider"></div>
 
     <section class="content">
-      <div class="content-header">
-        <div id="breadcrumb" class="breadcrumb"></div>
-        <input id="page-title" class="title-input" placeholder="Page title" />
-        <div class="timestamps" id="page-timestamps">
-          <div id="created-info" class="timestamp-line"></div>
-          <div id="updated-info" class="timestamp-line"></div>
+      <div id="content-header" class="content-header">
+        <div class="header-top-row">
+          <div class="header-left">
+            <div id="breadcrumb" class="breadcrumb"></div>
+            <input id="page-title" class="title-input" placeholder="Page title" />
+          </div>
+          <div class="timestamps" id="page-timestamps">
+            <div id="created-info" class="timestamp-line"></div>
+            <div id="updated-info" class="timestamp-line"></div>
+          </div>
         </div>
-        <div class="view-tabs">
-          <button class="view-btn active" data-view="note">Notepad</button>
-          <button class="view-btn" data-view="todo">To-Do</button>
+        <div class="header-bottom-row">
+          <div class="view-tabs">
+            <button class="view-btn active" data-view="note">Notepad</button>
+            <button class="view-btn" data-view="todo">To-Do</button>
+          </div>
+          <button id="close-page-btn" class="close-page-btn" title="Close page">✕</button>
         </div>
       </div>
 
@@ -254,7 +275,7 @@
 
       <div id="todo-view" class="view hidden">
         <div class="todo-bar">
-          <input id="todo-input" placeholder="Add a task and press Enter..." />
+          <button id="add-task-btn" class="btn primary">+ Add Task</button>
         </div>
         <div class="kanban-board">
           <div class="kanban-column">
@@ -269,6 +290,55 @@
             <div class="kanban-column-title">Completed <span class="kanban-column-count">(<span id="completed-count">0</span>)</span></div>
             <ul id="completed-list" class="todo-list"></ul>
           </div>
+        </div>
+      </div>
+
+      <!-- Welcome Screen -->
+      <div id="welcome-screen" class="welcome-screen hidden">
+        <div class="welcome-content">
+          <div class="welcome-logo">📝</div>
+          <h1 class="welcome-title">Welcome to Mini Note</h1>
+          <p class="welcome-subtitle">Your powerful note-taking companion</p>
+
+          <div class="welcome-image">
+            <img id="welcome-img-light" src="icons/welcome-light.svg" alt="Mini Note Features" class="welcome-illustration" />
+            <img id="welcome-img-dark" src="icons/welcome-dark.svg" alt="Mini Note Features" class="welcome-illustration hidden" />
+          </div>
+
+          <div class="features-grid">
+            <div class="feature-item">
+              <div class="feature-icon">📝</div>
+              <h3 class="feature-title">Rich Text Editor</h3>
+              <p class="feature-desc">Format text with bold, italic, colors, and more</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-icon">🎨</div>
+              <h3 class="feature-title">Drawing Canvas</h3>
+              <p class="feature-desc">Sketch ideas with pen, highlighter, and eraser tools</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-icon">✅</div>
+              <h3 class="feature-title">Task Management</h3>
+              <p class="feature-desc">Organize tasks with drag-and-drop Kanban board</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-icon">📁</div>
+              <h3 class="feature-title">Collections</h3>
+              <p class="feature-desc">Group related notes into folders</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-icon">🔍</div>
+              <h3 class="feature-title">Smart Search</h3>
+              <p class="feature-desc">Find notes and pages instantly</p>
+            </div>
+            <div class="feature-item">
+              <div class="feature-icon">💾</div>
+              <h3 class="feature-title">Auto-Save</h3>
+              <p class="feature-desc">Never lose your work with automatic saving</p>
+            </div>
+          </div>
+
+          <p class="welcome-footer">Create a new page or select one from the sidebar to get started</p>
         </div>
       </div>
     </section>
@@ -335,31 +405,44 @@
     </div>
   </div>
 
-  <!-- Math Assistant dialog -->
-  <div id="math-dialog" class="dialog-overlay hidden">
-    <div class="dialog dialog-tall">
+  <!-- Task Modal -->
+  <div id="task-modal" class="dialog-overlay hidden">
+    <div class="dialog">
       <div class="dialog-header">
-        <div class="dialog-title">Math Assistant</div>
-        <button class="dialog-close" data-close="math-dialog">✕</button>
+        <div class="dialog-title" id="task-modal-title">Add Task</div>
+        <button class="dialog-close" data-close="task-modal">✕</button>
       </div>
       <div class="dialog-body">
-        <ol class="math-steps">
-          <li><b>Write</b> your equation (type below)</li>
-          <li><b>Select</b> and insert into the note</li>
-        </ol>
-
-        <textarea id="math-input" class="math-input" placeholder="Example: x + y = 3"></textarea>
-
-        <div class="math-examples">
-          <div class="math-ex-title">Quick Start Examples</div>
-          <button class="math-ex" data-ex="Solve for x, y&#10;x + y = 3&#10;x - y = 1">Solve for x, y</button>
-          <button class="math-ex" data-ex="Graph inequality&#10;y &gt; a + b/x">Graph Inequality</button>
-          <button class="math-ex" data-ex="Verify&#10;(2^3·2^8)/(2^5) = 2^6">Verify</button>
+        <div class="form-group">
+          <label class="form-label">Name *</label>
+          <input id="task-name" class="form-input" placeholder="Task name" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea id="task-description" class="form-textarea" placeholder="Task description" rows="3"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Start Date</label>
+            <input id="task-start-date" class="form-input" type="date" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">End Date</label>
+            <input id="task-end-date" class="form-input" type="date" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Status</label>
+          <select id="task-status" class="form-input">
+            <option value="todo">To Do</option>
+            <option value="inprogress">In Progress</option>
+            <option value="completed">Completed</option>
+          </select>
         </div>
       </div>
       <div class="dialog-footer">
-        <button id="math-insert" class="btn primary">Insert</button>
-        <button class="btn" data-close="math-dialog">Close</button>
+        <button id="task-save" class="btn primary">Save</button>
+        <button class="btn" data-close="task-modal">Cancel</button>
       </div>
     </div>
   </div>

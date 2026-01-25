@@ -1,0 +1,26 @@
+<svg width="400" height="300" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="400" height="300" fill="#f8fafc" rx="12"/>
+
+  <!-- Notepad illustration -->
+  <rect x="80" y="40" width="240" height="200" fill="#ffffff" stroke="#e2e8f0" stroke-width="2" rx="8"/>
+
+  <!-- Header bar -->
+  <rect x="80" y="40" width="240" height="30" fill="#2563eb" rx="8" ry="0"/>
+
+  <!-- Text lines -->
+  <line x1="100" y1="90" x2="280" y2="90" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+  <line x1="100" y1="110" x2="260" y2="110" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+  <line x1="100" y1="130" x2="270" y2="130" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- Drawing area -->
+  <rect x="100" y="150" width="180" height="70" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="1" rx="4"/>
+
+  <!-- Pen icon -->
+  <path d="M 250 165 L 265 180 L 255 190 L 240 175 Z" fill="#2563eb"/>
+  <circle cx="268" cy="177" r="3" fill="#2563eb"/>
+
+  <!-- Checkmark -->
+  <circle cx="120" cy="165" r="8" fill="#10b981" opacity="0.2"/>
+  <path d="M 116 165 L 119 168 L 124 162" stroke="#10b981" stroke-width="2" fill="none" stroke-linecap="round"/>
+</svg>
