@@ -40,25 +40,24 @@ const Storage = {
 
   async initIfEmpty() {
     const folders = await this.getFolders();
-    if (folders.length) return;
+    const isFirstVisit = await this.kvGet("isFirstVisit");
 
-    const folderId = this.uid();
-    const pageId = this.uid();
+    // Set first visit flag on initial installation
+    if (isFirstVisit === null) {
+      await this.kvSet("isFirstVisit", true);
+    }
 
-    await this.putFolder({ id: folderId, name: "My Notes", createdAt: Date.now() });
-    await this.putPage({
-      id: pageId,
-      folderId,
-      title: "Welcome",
-      noteHtml: `<h2>Welcome</h2><p>This is your offline notepad.</p><ul><li>Use <b>Insert</b> to add tables, links, emojis.</li><li>Use <b>Draw</b> to sketch on top.</li></ul>`,
-      todos: [{ id: this.uid(), text: "Try adding a new page", done: false }],
-      drawingDataUrl: "",
-      order: 0,
-      updatedAt: Date.now(),
-      createdAt: Date.now()
-    });
+    // Create default folder if none exist
+    if (folders.length === 0) {
+      const folderId = this.uid();
+      await this.putFolder({
+        id: folderId,
+        name: "My Notes",
+        createdAt: Date.now()
+      });
 
-    await this.kvSet("activePageId", pageId);
+      // Don't create a default Welcome page - let UI show welcome screen instead
+    }
   },
 
   async kvGet(key) {

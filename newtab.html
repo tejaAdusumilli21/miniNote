@@ -405,6 +405,74 @@
     </div>
   </div>
 
+  <!-- Table Picker Dialog -->
+  <div id="table-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <div class="dialog-header">
+        <div class="dialog-title">Insert Table</div>
+        <button class="dialog-close" data-close="table-dialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="table-picker-label">Select table size:</div>
+        <div id="table-size-grid" class="table-size-grid"></div>
+        <div class="table-size-display" id="table-size-display">1 × 1</div>
+        <div class="dialog-meta">
+          <label class="meta-label">
+            <input type="checkbox" id="table-header-row" checked />
+            Include header row
+          </label>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button id="table-insert" class="btn primary">Insert</button>
+        <button class="btn" data-close="table-dialog">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Table Shading Dialog -->
+  <div id="table-shading-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <div class="dialog-header">
+        <div class="dialog-title">Cell Shading</div>
+        <button class="dialog-close" data-close="table-shading-dialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div id="shading-color-grid" class="shading-color-grid"></div>
+      </div>
+      <div class="dialog-footer">
+        <button id="shading-apply" class="btn primary">Apply</button>
+        <button id="shading-clear" class="btn ghost">Clear Shading</button>
+        <button class="btn" data-close="table-shading-dialog">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Link Dialog -->
+  <div id="link-dialog" class="dialog-overlay hidden">
+    <div class="dialog">
+      <div class="dialog-header">
+        <div class="dialog-title">Insert Link</div>
+        <button class="dialog-close" data-close="link-dialog">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="form-group">
+          <label class="form-label">URL *</label>
+          <input id="link-url-input" class="form-input" type="url" placeholder="https://example.com" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Link Text (optional)</label>
+          <input id="link-text-input" class="form-input" type="text" placeholder="Click here" />
+          <div class="form-hint">Leave empty to use URL as text</div>
+        </div>
+      </div>
+      <div class="dialog-footer">
+        <button id="link-insert" class="btn primary">Insert</button>
+        <button class="btn" data-close="link-dialog">Cancel</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Task Modal -->
   <div id="task-modal" class="dialog-overlay hidden">
     <div class="dialog">

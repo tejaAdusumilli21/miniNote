@@ -14,7 +14,8 @@ let state = {
   drag: { pageId: null, fromFolderId: null },
   selectedSymbol: null,
   selectedEmoji: null,
-  selectedEmojiCategory: "smileys"
+  selectedEmojiCategory: "smileys",
+  editingLink: null
 };
 
 const el = (id) => document.getElementById(id);
@@ -576,8 +577,11 @@ async function openPage(pageId) {
   el("editor").innerHTML = page.noteHtml || "";
   await Draw.loadDataUrl(page.drawingDataUrl || "");
 
-  // Initialize table drag and drop for any tables in the loaded content
-  setTimeout(() => initTableDragDrop(), 100);
+  // Initialize enhanced tables and links
+  setTimeout(() => {
+    TableEnhanced.init();
+    LinkEnhanced.init();
+  }, 100);
 
   renderTree();
   setView(state.activeView);
@@ -922,7 +926,13 @@ const EMOJI_TABS = [
 ];
 
 function showDialog(id) { el(id).classList.remove("hidden"); }
-function hideDialog(id) { el(id).classList.add("hidden"); }
+function hideDialog(id) {
+  el(id).classList.add("hidden");
+  // Clear editing link state when link dialog closes
+  if (id === "link-dialog") {
+    state.editingLink = null;
+  }
+}
 
 function buildSymbolGrid() {
   const grid = el("symbol-grid");
@@ -976,6 +986,169 @@ function buildEmoji() {
   }
 }
 
+// ===== LINK DIALOG MODULE (Exactly like TablePicker) =====
+const LinkDialog = (() => {
+  function show() {
+    Editor.saveSelection();  // Save INSIDE show(), like TablePicker
+
+    // Clear input fields
+    el("link-url-input").value = "";
+    el("link-text-input").value = "";
+
+    showDialog("link-dialog");
+  }
+
+  function insert() {
+    const url = el("link-url-input").value.trim();
+    const text = el("link-text-input").value.trim();
+
+    if (!url) {
+      toast("Please enter a URL");
+      return;
+    }
+
+    const linkText = text || url;
+    const safeUrl = escapeHtml(url);
+    const safeText = escapeHtml(linkText);
+
+    Editor.insertHTML(`<a href="${safeUrl}" target="_blank" rel="noreferrer" class="editor-link">${safeText}</a>`);
+    hideDialog("link-dialog");
+    autosave();
+
+    // Initialize link handlers after insertion
+    setTimeout(() => LinkEnhanced.init(), 50);
+  }
+
+  return { show, insert };
+})();
+
+// ===== LINK ENHANCED MODULE =====
+const LinkEnhanced = (() => {
+  function init() {
+    const editor = el("editor");
+    if (!editor) return;
+
+    const links = editor.querySelectorAll("a");
+    links.forEach(link => {
+      if (link.dataset.linkInit) return; // Skip if already initialized
+      link.dataset.linkInit = "true";
+
+      // Add editor-link class for styling
+      if (!link.classList.contains("editor-link")) {
+        link.classList.add("editor-link");
+      }
+
+      // Click to open in browser (Ctrl/Cmd + Click)
+      link.addEventListener("click", (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          const href = link.getAttribute("href");
+          if (href) {
+            window.open(href, "_blank");
+          }
+        }
+      });
+
+      // Right-click context menu
+      link.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        showLinkContextMenu(e, link);
+      });
+    });
+  }
+
+  function showLinkContextMenu(event, link) {
+    // Remove any existing context menus
+    document.querySelectorAll(".context-menu").forEach(m => m.remove());
+
+    const menu = document.createElement("div");
+    menu.className = "context-menu";
+    menu.style.position = "fixed";
+    menu.style.left = event.clientX + "px";
+    menu.style.top = event.clientY + "px";
+    menu.style.zIndex = "100000";
+
+    // Open Link
+    const openItem = document.createElement("div");
+    openItem.className = "context-menu-item";
+    openItem.textContent = "Open Link";
+    openItem.onclick = () => {
+      const href = link.getAttribute("href");
+      if (href) {
+        window.open(href, "_blank");
+      }
+      menu.remove();
+    };
+    menu.appendChild(openItem);
+
+    // Edit Link
+    const editItem = document.createElement("div");
+    editItem.className = "context-menu-item";
+    editItem.textContent = "Edit Link";
+    editItem.onclick = () => {
+      menu.remove();
+      editLink(link);
+    };
+    menu.appendChild(editItem);
+
+    // Remove Link (unlink)
+    const removeItem = document.createElement("div");
+    removeItem.className = "context-menu-item";
+    removeItem.textContent = "Remove Link";
+    removeItem.onclick = () => {
+      menu.remove();
+      removeLink(link);
+      autosave();
+    };
+    menu.appendChild(removeItem);
+
+    document.body.appendChild(menu);
+
+    // Close menu on outside click
+    setTimeout(() => {
+      const closeHandler = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          document.removeEventListener("click", closeHandler);
+        }
+      };
+      document.addEventListener("click", closeHandler);
+    }, 0);
+  }
+
+  function removeLink(link) {
+    // Replace link with its text content
+    const textNode = document.createTextNode(link.textContent);
+    link.parentNode.replaceChild(textNode, link);
+  }
+
+  function editLink(link) {
+    // Save the current link for editing
+    const currentUrl = link.getAttribute("href") || "";
+    const currentText = link.textContent || "";
+
+    // Save selection at link position
+    const range = document.createRange();
+    range.selectNode(link);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    Editor.saveSelection();
+
+    // Populate dialog with current values
+    el("link-url-input").value = currentUrl;
+    el("link-text-input").value = currentText;
+
+    showDialog("link-dialog");
+
+    // Store reference to the link being edited
+    state.editingLink = link;
+  }
+
+  return { init };
+})();
+
 function wireDialogs() {
   document.querySelectorAll("[data-close]").forEach(b => {
     b.addEventListener("click", () => {
@@ -987,8 +1160,8 @@ function wireDialogs() {
     });
   });
 
-  ["symbol-dialog","emoji-dialog","task-modal"].forEach(id => {
-    el(id).addEventListener("click", (e) => {
+  ["symbol-dialog","emoji-dialog","task-modal","table-dialog","table-shading-dialog","link-dialog"].forEach(id => {
+    el(id)?.addEventListener("click", (e) => {
       if (e.target === el(id)) {
         if (id === "task-modal") {
           closeTaskModal();
@@ -1014,6 +1187,42 @@ function wireDialogs() {
     Editor.insertText(state.selectedEmoji);
     hideDialog("emoji-dialog");
     autosave();
+  };
+
+  el("link-insert").onclick = () => {
+    // Check if editing existing link
+    if (state.editingLink) {
+      const url = el("link-url-input").value.trim();
+      const text = el("link-text-input").value.trim();
+
+      if (!url) {
+        toast("Please enter a URL");
+        return;
+      }
+
+      const linkText = text || url;
+      state.editingLink.setAttribute("href", escapeHtml(url));
+      state.editingLink.textContent = escapeHtml(linkText);
+
+      hideDialog("link-dialog");
+      state.editingLink = null;
+      autosave();
+    } else {
+      LinkDialog.insert();
+    }
+  };
+
+  // Table dialog handlers
+  el("table-insert").onclick = () => {
+    TablePicker.insertTable();
+  };
+
+  el("shading-apply").onclick = () => {
+    TableShading.apply();
+  };
+
+  el("shading-clear").onclick = () => {
+    TableShading.clear();
   };
 }
 
@@ -1392,131 +1601,658 @@ function wireHomeRibbon() {
   };
 }
 
-async function insertTableFlow() {
-  // Save selection before modal opens
-  Editor.saveSelection();
+// ===== TABLE PICKER MODULE =====
+const TablePicker = (() => {
+  let selectedRows = 1;
+  let selectedCols = 1;
+  const MAX_ROWS = 10;
+  const MAX_COLS = 10;
 
-  const res = await openModal({
-    title: "Insert table",
-    message: "Type rows x columns (example: 3x3)",
-    label: "Size",
-    value: "3x3",
-    okText: "Insert"
-  });
-  if (res.action !== "ok") return;
+  function buildTableSizeGrid() {
+    const grid = el("table-size-grid");
+    grid.innerHTML = "";
 
-  const v = res.value.toLowerCase().replace(/\s/g,"");
-  const m = v.match(/(\d+)x(\d+)/);
-  const rows = Math.max(1, Math.min(20, m ? parseInt(m[1],10) : 3));
-  const cols = Math.max(1, Math.min(12, m ? parseInt(m[2],10) : 3));
+    for (let r = 0; r < MAX_ROWS; r++) {
+      for (let c = 0; c < MAX_COLS; c++) {
+        const cell = document.createElement("div");
+        cell.className = "table-size-cell";
+        cell.dataset.row = r;
+        cell.dataset.col = c;
 
-  let html = `<table class="resizable-table"><tbody>`;
-  for (let r=0; r<rows; r++){
-    html += "<tr>";
-    for (let c=0; c<cols; c++) html += "<td>&nbsp;</td>";
-    html += "</tr>";
+        cell.addEventListener("mouseenter", () => {
+          selectedRows = r + 1;
+          selectedCols = c + 1;
+          updateHighlight();
+        });
+
+        cell.addEventListener("click", () => {
+          insertTable();
+        });
+
+        grid.appendChild(cell);
+      }
+    }
+
+    selectedRows = 3;
+    selectedCols = 3;
+    updateHighlight();
   }
-  html += `</tbody></table><p></p>`;
-  Editor.insertHTML(html);
-  autosave();
 
-  // Initialize table drag-and-drop after a short delay to ensure DOM is ready
-  setTimeout(() => initTableDragDrop(), 100);
-}
+  function updateHighlight() {
+    const cells = document.querySelectorAll(".table-size-cell");
+    cells.forEach(cell => {
+      const r = parseInt(cell.dataset.row);
+      const c = parseInt(cell.dataset.col);
 
-async function insertLinkFlow() {
-  // Save selection before modal opens
-  Editor.saveSelection();
-
-  const res = await openModal({
-    title: "Insert link",
-    message: "Paste a URL (you can edit the text after inserting).",
-    label: "URL",
-    placeholder: "https://...",
-    okText: "Insert"
-  });
-  if (res.action !== "ok") return;
-  const url = res.value;
-  const safe = escapeHtml(url);
-  Editor.insertHTML(`<a href="${safe}" target="_blank" rel="noreferrer">${safe}</a>`);
-  autosave();
-}
-
-/* ---------------- Table Drag and Drop ---------------- */
-
-function initTableDragDrop() {
-  const editor = el("editor");
-  if (!editor) return;
-
-  const tables = editor.querySelectorAll("table.resizable-table");
-  tables.forEach(table => {
-    // Skip if already initialized
-    if (table.dataset.dragInitialized) return;
-    table.dataset.dragInitialized = "true";
-
-    // Make table cells draggable for row reordering
-    const rows = table.querySelectorAll("tbody tr");
-    rows.forEach((row, rowIndex) => {
-      row.draggable = true;
-      row.dataset.rowIndex = rowIndex;
-
-      row.addEventListener("dragstart", (e) => {
-        e.dataTransfer.effectAllowed = "move";
-        e.dataTransfer.setData("text/html", row.innerHTML);
-        e.dataTransfer.setData("row-index", rowIndex);
-        row.classList.add("dragging");
-      });
-
-      row.addEventListener("dragend", (e) => {
-        row.classList.remove("dragging");
-        rows.forEach(r => r.classList.remove("drag-over"));
-      });
-
-      row.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-
-        const draggingRow = table.querySelector("tr.dragging");
-        if (draggingRow && draggingRow !== row) {
-          row.classList.add("drag-over");
-        }
-      });
-
-      row.addEventListener("dragleave", (e) => {
-        row.classList.remove("drag-over");
-      });
-
-      row.addEventListener("drop", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-
-        const draggingRow = table.querySelector("tr.dragging");
-        if (!draggingRow || draggingRow === row) return;
-
-        const tbody = table.querySelector("tbody");
-        const allRows = Array.from(tbody.querySelectorAll("tr"));
-        const dragIndex = allRows.indexOf(draggingRow);
-        const dropIndex = allRows.indexOf(row);
-
-        if (dragIndex < dropIndex) {
-          tbody.insertBefore(draggingRow, row.nextSibling);
-        } else {
-          tbody.insertBefore(draggingRow, row);
-        }
-
-        row.classList.remove("drag-over");
-        autosave();
-      });
+      if (r < selectedRows && c < selectedCols) {
+        cell.classList.add("highlighted");
+      } else {
+        cell.classList.remove("highlighted");
+      }
     });
 
-    // Make columns resizable by dragging column borders
+    el("table-size-display").textContent = `${selectedRows} × ${selectedCols}`;
+  }
+
+  function insertTable() {
+    const includeHeader = el("table-header-row").checked;
+
+    let html = '<div class="table-wrapper">';
+    html += '<div class="table-drag-handle">⠿</div>';
+    html += `<table class="enhanced-table" data-has-header="${includeHeader}">`;
+
+    if (includeHeader) {
+      html += "<thead><tr>";
+      for (let c = 0; c < selectedCols; c++) {
+        html += `<th contenteditable="true">Header ${c + 1}</th>`;
+      }
+      html += "</tr></thead>";
+    }
+
+    html += "<tbody>";
+    for (let r = 0; r < selectedRows; r++) {
+      html += "<tr>";
+      for (let c = 0; c < selectedCols; c++) {
+        html += `<td contenteditable="true">&nbsp;</td>`;
+      }
+      html += "</tr>";
+    }
+    html += "</tbody></table></div><p>&nbsp;</p>";
+
+    Editor.insertHTML(html);
+    hideDialog("table-dialog");
+    autosave();
+
+    setTimeout(() => TableEnhanced.init(), 100);
+  }
+
+  function show() {
+    Editor.saveSelection();
+    buildTableSizeGrid();
+    el("table-header-row").checked = true;
+    showDialog("table-dialog");
+  }
+
+  return { show };
+})();
+
+/* ---------------- Table Enhanced Features ---------------- */
+
+// ===== TABLE CONTEXT MENU MODULE =====
+const TableContextMenu = (() => {
+  let currentTable = null;
+  let currentCell = null;
+  let selectedCells = [];
+
+  function show(event, table, cell) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    document.querySelectorAll(".context-menu").forEach(m => m.remove());
+
+    currentTable = table;
+    currentCell = cell;
+
+    const menu = document.createElement("div");
+    menu.className = "context-menu";
+    menu.style.position = "fixed";
+    menu.style.left = event.clientX + "px";
+    menu.style.top = event.clientY + "px";
+    menu.style.zIndex = "100000";
+
+    const menuItems = buildMenuItems(table, cell);
+    menuItems.forEach(item => menu.appendChild(item));
+
+    document.body.appendChild(menu);
+
+    setTimeout(() => {
+      const closeHandler = (e) => {
+        if (!menu.contains(e.target)) {
+          menu.remove();
+          document.removeEventListener("click", closeHandler);
+        }
+      };
+      document.addEventListener("click", closeHandler);
+    }, 0);
+  }
+
+  function buildMenuItems(table, cell) {
+    const items = [];
+
+    items.push(createMenuItem("Insert Table...", () => TablePicker.show()));
+    items.push(createSeparator());
+
+    items.push(createMenuItem("Insert Column Left", () => insertColumn(table, cell, "before")));
+    items.push(createMenuItem("Insert Column Right", () => insertColumn(table, cell, "after")));
+    items.push(createMenuItem("Insert Row Above", () => insertRow(table, cell, "before")));
+    items.push(createMenuItem("Insert Row Below", () => insertRow(table, cell, "after")));
+
+    items.push(createSeparator());
+
+    items.push(createMenuItem("Delete Table", () => deleteTable(table)));
+    items.push(createMenuItem("Delete Columns", () => deleteColumn(table, cell)));
+    items.push(createMenuItem("Delete Rows", () => deleteRow(table, cell)));
+
+    items.push(createSeparator());
+
+    if (selectedCells.length > 1) {
+      items.push(createMenuItem("Merge Cells", () => mergeCells(table, selectedCells)));
+    } else {
+      items.push(createMenuItem("Merge Cells", null, "disabled"));
+    }
+
+    if (cell && (cell.colSpan > 1 || cell.rowSpan > 1)) {
+      items.push(createMenuItem("Split Cells...", () => splitCell(table, cell)));
+    } else {
+      items.push(createMenuItem("Split Cells...", null, "disabled"));
+    }
+
+    items.push(createSeparator());
+
+    items.push(createMenuItem("Select Table", () => selectTable(table)));
+    items.push(createMenuItem("Select Columns", () => selectColumn(table, cell)));
+    items.push(createMenuItem("Select Rows", () => selectRow(table, cell)));
+    items.push(createMenuItem("Select Cell", () => selectCell(cell)));
+
+    items.push(createSeparator());
+
+    items.push(createMenuItem("Hide Borders", () => toggleBorders(table)));
+    items.push(createMenuItem("Shading", () => showShadingPicker()));
+
+    items.push(createSeparator());
+
+    items.push(createMenuItem("Sort Ascending", () => sortTable(table, getColumnIndex(cell), "asc")));
+    items.push(createMenuItem("Sort Descending", () => sortTable(table, getColumnIndex(cell), "desc")));
+
+    items.push(createSeparator());
+
+    items.push(createMenuItem("Header Row", () => toggleHeaderRow(table)));
+
+    return items;
+  }
+
+  function createMenuItem(text, onClick, className = "") {
+    const item = document.createElement("div");
+    item.className = `context-menu-item ${className}`;
+    item.textContent = text;
+
+    if (onClick && !className.includes("disabled")) {
+      item.onclick = (e) => {
+        e.stopPropagation();
+        document.querySelectorAll(".context-menu").forEach(m => m.remove());
+        onClick();
+        autosave();
+      };
+    }
+
+    return item;
+  }
+
+  function createSeparator() {
+    const sep = document.createElement("div");
+    sep.className = "context-menu-separator";
+    return sep;
+  }
+
+  function getRowIndex(cell) {
+    if (!cell) return -1;
+    const row = cell.closest("tr");
+    const rows = Array.from(row.parentElement.children);
+    return rows.indexOf(row);
+  }
+
+  function getColumnIndex(cell) {
+    if (!cell) return -1;
+    return Array.from(cell.parentElement.children).indexOf(cell);
+  }
+
+  function insertColumn(table, cell, position) {
+    const colIndex = getColumnIndex(cell);
+    const rows = table.querySelectorAll("tr");
+
+    rows.forEach(row => {
+      const cells = Array.from(row.children);
+      const isHeader = row.parentElement.tagName === "THEAD";
+      const newCell = document.createElement(isHeader ? "th" : "td");
+      newCell.contentEditable = true;
+      newCell.innerHTML = "&nbsp;";
+
+      if (position === "before") {
+        row.insertBefore(newCell, cells[colIndex]);
+      } else {
+        if (cells[colIndex + 1]) {
+          row.insertBefore(newCell, cells[colIndex + 1]);
+        } else {
+          row.appendChild(newCell);
+        }
+      }
+    });
+
+    setTimeout(() => TableEnhanced.init(), 50);
+  }
+
+  function insertRow(table, cell, position) {
+    const row = cell.closest("tr");
+    const colCount = row.children.length;
+    const newRow = document.createElement("tr");
+
+    for (let i = 0; i < colCount; i++) {
+      const newCell = document.createElement("td");
+      newCell.contentEditable = true;
+      newCell.innerHTML = "&nbsp;";
+      newRow.appendChild(newCell);
+    }
+
+    if (position === "before") {
+      row.parentElement.insertBefore(newRow, row);
+    } else {
+      if (row.nextElementSibling) {
+        row.parentElement.insertBefore(newRow, row.nextElementSibling);
+      } else {
+        row.parentElement.appendChild(newRow);
+      }
+    }
+  }
+
+  function deleteTable(table) {
+    const wrapper = table.closest(".table-wrapper");
+    if (wrapper) {
+      wrapper.remove();
+    } else {
+      table.remove();
+    }
+  }
+
+  function deleteColumn(table, cell) {
+    const colIndex = getColumnIndex(cell);
+    const rows = table.querySelectorAll("tr");
+
+    let canDelete = false;
+    rows.forEach(row => {
+      if (row.children.length > 1) canDelete = true;
+    });
+
+    if (!canDelete) {
+      toast("Cannot delete the last column");
+      return;
+    }
+
+    rows.forEach(row => {
+      if (row.children[colIndex]) {
+        row.children[colIndex].remove();
+      }
+    });
+  }
+
+  function deleteRow(table, cell) {
+    const tbody = table.querySelector("tbody");
+    if (tbody && tbody.querySelectorAll("tr").length <= 1) {
+      toast("Cannot delete the last row");
+      return;
+    }
+
+    const row = cell.closest("tr");
+    row.remove();
+  }
+
+  function mergeCells(table, cells) {
+    if (cells.length < 2) return;
+
+    let minRow = Infinity, maxRow = -1, minCol = Infinity, maxCol = -1;
+
+    cells.forEach(cell => {
+      const row = getRowIndex(cell);
+      const col = getColumnIndex(cell);
+      minRow = Math.min(minRow, row);
+      maxRow = Math.max(maxRow, row);
+      minCol = Math.min(minCol, col);
+      maxCol = Math.max(maxCol, col);
+    });
+
+    const rowSpan = maxRow - minRow + 1;
+    const colSpan = maxCol - minCol + 1;
+
+    const firstCell = cells[0];
+    const contents = cells.map(c => c.innerHTML).filter(h => h !== "&nbsp;" && h.trim());
+    firstCell.innerHTML = contents.join(" ") || "&nbsp;";
+    firstCell.rowSpan = rowSpan;
+    firstCell.colSpan = colSpan;
+
+    cells.slice(1).forEach(c => c.remove());
+    clearSelection();
+  }
+
+  function splitCell(table, cell) {
+    const rowSpan = cell.rowSpan || 1;
+    const colSpan = cell.colSpan || 1;
+
+    if (rowSpan === 1 && colSpan === 1) return;
+
+    cell.rowSpan = 1;
+    cell.colSpan = 1;
+
+    const row = cell.closest("tr");
+    const colIndex = getColumnIndex(cell);
+
+    for (let c = 1; c < colSpan; c++) {
+      const newCell = document.createElement(cell.tagName);
+      newCell.contentEditable = true;
+      newCell.innerHTML = "&nbsp;";
+      row.insertBefore(newCell, cell.nextSibling);
+    }
+
+    const tbody = row.parentElement;
+    const rowIndex = getRowIndex(cell);
+
+    for (let r = 1; r < rowSpan; r++) {
+      const targetRow = tbody.children[rowIndex + r];
+      if (targetRow) {
+        for (let c = 0; c < colSpan; c++) {
+          const newCell = document.createElement("td");
+          newCell.contentEditable = true;
+          newCell.innerHTML = "&nbsp;";
+          if (targetRow.children[colIndex]) {
+            targetRow.insertBefore(newCell, targetRow.children[colIndex]);
+          } else {
+            targetRow.appendChild(newCell);
+          }
+        }
+      }
+    }
+  }
+
+  function selectTable(table) {
+    clearSelection();
+    selectedCells = Array.from(table.querySelectorAll("td, th"));
+    selectedCells.forEach(c => c.classList.add("table-cell-selected"));
+  }
+
+  function selectColumn(table, cell) {
+    clearSelection();
+    const colIndex = getColumnIndex(cell);
+    const rows = table.querySelectorAll("tr");
+
+    rows.forEach(row => {
+      if (row.children[colIndex]) {
+        row.children[colIndex].classList.add("table-col-selected");
+        selectedCells.push(row.children[colIndex]);
+      }
+    });
+  }
+
+  function selectRow(table, cell) {
+    clearSelection();
+    const row = cell.closest("tr");
+    Array.from(row.children).forEach(c => {
+      c.classList.add("table-row-selected");
+      selectedCells.push(c);
+    });
+  }
+
+  function selectCell(cell) {
+    clearSelection();
+    cell.classList.add("table-cell-selected");
+    selectedCells = [cell];
+  }
+
+  function clearSelection() {
+    document.querySelectorAll(".table-cell-selected, .table-row-selected, .table-col-selected")
+      .forEach(el => {
+        el.classList.remove("table-cell-selected", "table-row-selected", "table-col-selected");
+      });
+    selectedCells = [];
+  }
+
+  function toggleBorders(table) {
+    const hideBorders = table.dataset.hideBorders !== "true";
+    table.dataset.hideBorders = hideBorders;
+
+    if (hideBorders) {
+      table.style.border = "none";
+      table.querySelectorAll("td, th").forEach(cell => {
+        cell.style.border = "none";
+      });
+    } else {
+      table.style.border = "";
+      table.querySelectorAll("td, th").forEach(cell => {
+        cell.style.border = "";
+      });
+    }
+  }
+
+  function showShadingPicker() {
+    Editor.saveSelection();
+    TableShading.build(selectedCells.length ? selectedCells : [currentCell]);
+    showDialog("table-shading-dialog");
+  }
+
+  function toggleHeaderRow(table) {
+    const hasHeader = table.dataset.hasHeader === "true";
+
+    if (hasHeader) {
+      const thead = table.querySelector("thead");
+      if (thead) {
+        const headerRow = thead.querySelector("tr");
+        if (headerRow) {
+          Array.from(headerRow.children).forEach(th => {
+            const td = document.createElement("td");
+            td.innerHTML = th.innerHTML;
+            td.contentEditable = true;
+            Object.assign(td.style, th.style);
+            th.replaceWith(td);
+          });
+
+          const tbody = table.querySelector("tbody");
+          tbody.insertBefore(headerRow, tbody.firstChild);
+          thead.remove();
+        }
+      }
+      table.dataset.hasHeader = "false";
+    } else {
+      const tbody = table.querySelector("tbody");
+      const firstRow = tbody?.querySelector("tr");
+
+      if (firstRow) {
+        Array.from(firstRow.children).forEach(td => {
+          const th = document.createElement("th");
+          th.innerHTML = td.innerHTML;
+          th.contentEditable = true;
+          Object.assign(th.style, td.style);
+          td.replaceWith(th);
+        });
+
+        let thead = table.querySelector("thead");
+        if (!thead) {
+          thead = document.createElement("thead");
+          table.insertBefore(thead, tbody);
+        }
+        thead.appendChild(firstRow);
+      }
+      table.dataset.hasHeader = "true";
+    }
+  }
+
+  function sortTable(table, colIndex, direction) {
+    const tbody = table.querySelector("tbody");
+    if (!tbody) return;
+
+    const rows = Array.from(tbody.querySelectorAll("tr"));
+
+    rows.sort((a, b) => {
+      const aText = a.children[colIndex]?.textContent.trim() || "";
+      const bText = b.children[colIndex]?.textContent.trim() || "";
+
+      const aNum = parseFloat(aText);
+      const bNum = parseFloat(bText);
+
+      if (!isNaN(aNum) && !isNaN(bNum)) {
+        return direction === "asc" ? aNum - bNum : bNum - aNum;
+      }
+
+      return direction === "asc"
+        ? aText.localeCompare(bText)
+        : bText.localeCompare(aText);
+    });
+
+    rows.forEach(row => tbody.appendChild(row));
+  }
+
+  return { show, clearSelection };
+})();
+
+// ===== TABLE SHADING MODULE =====
+const TableShading = (() => {
+  const COLORS = [
+    "#ffffff", "#f3f4f6", "#e5e7eb", "#d1d5db", "#9ca3af", "#6b7280",
+    "#fef3c7", "#fde68a", "#fcd34d", "#fbbf24", "#f59e0b", "#d97706",
+    "#fee2e2", "#fecaca", "#fca5a5", "#f87171", "#ef4444", "#dc2626",
+    "#dbeafe", "#bfdbfe", "#93c5fd", "#60a5fa", "#3b82f6", "#2563eb",
+    "#dcfce7", "#bbf7d0", "#86efac", "#4ade80", "#22c55e", "#16a34a",
+    "#f3e8ff", "#e9d5ff", "#d8b4fe", "#c084fc", "#a855f7", "#9333ea"
+  ];
+
+  let targetCells = [];
+
+  function build(cells) {
+    targetCells = cells;
+    const grid = el("shading-color-grid");
+    grid.innerHTML = "";
+
+    COLORS.forEach(color => {
+      const cell = document.createElement("div");
+      cell.className = "shading-color-cell";
+      cell.style.backgroundColor = color;
+      cell.title = color;
+
+      cell.onclick = () => {
+        grid.querySelectorAll(".shading-color-cell").forEach(c =>
+          c.classList.remove("selected")
+        );
+        cell.classList.add("selected");
+      };
+
+      grid.appendChild(cell);
+    });
+  }
+
+  function apply() {
+    const selected = document.querySelector(".shading-color-cell.selected");
+    if (!selected) {
+      toast("Please select a color");
+      return;
+    }
+
+    const color = selected.style.backgroundColor;
+    targetCells.forEach(cell => {
+      cell.style.backgroundColor = color;
+    });
+
+    hideDialog("table-shading-dialog");
+    autosave();
+  }
+
+  function clear() {
+    targetCells.forEach(cell => {
+      cell.style.backgroundColor = "";
+    });
+    hideDialog("table-shading-dialog");
+    autosave();
+  }
+
+  return { build, apply, clear };
+})();
+
+// ===== TABLE ENHANCED MODULE =====
+const TableEnhanced = (() => {
+  function init() {
+    const editor = el("editor");
+    if (!editor) return;
+
+    const tables = editor.querySelectorAll("table.enhanced-table");
+    tables.forEach(table => {
+      if (table.dataset.enhancedInit) return;
+      table.dataset.enhancedInit = "true";
+
+      addContextMenu(table);
+      addColumnResizing(table);
+      addRowDragging(table);
+      addTableDragging(table);
+    });
+
+    const legacyTables = editor.querySelectorAll("table.resizable-table");
+    legacyTables.forEach(table => {
+      if (!table.classList.contains("enhanced-table")) {
+        table.classList.add("enhanced-table");
+
+        if (!table.closest(".table-wrapper")) {
+          const wrapper = document.createElement("div");
+          wrapper.className = "table-wrapper";
+          const handle = document.createElement("div");
+          handle.className = "table-drag-handle";
+          handle.textContent = "⠿";
+          wrapper.appendChild(handle);
+          table.parentNode.insertBefore(wrapper, table);
+          wrapper.appendChild(table);
+        }
+
+        init();
+      }
+    });
+  }
+
+  function addContextMenu(table) {
+    table.addEventListener("contextmenu", (e) => {
+      let cell = e.target;
+
+      while (cell && cell !== table && cell.tagName !== "TD" && cell.tagName !== "TH") {
+        cell = cell.parentElement;
+      }
+
+      if (cell && (cell.tagName === "TD" || cell.tagName === "TH")) {
+        TableContextMenu.show(e, table, cell);
+      }
+    });
+  }
+
+  function addColumnResizing(table) {
     const cells = table.querySelectorAll("th, td");
-    cells.forEach((cell, index) => {
+    cells.forEach(cell => {
+      if (cell.querySelector(".table-resize-handle")) return;
+
       cell.style.position = "relative";
 
-      // Add resize handle to the right edge of each cell
       const resizer = document.createElement("div");
       resizer.className = "table-resize-handle";
+      resizer.style.cssText = `
+        position: absolute;
+        top: 0;
+        right: -3px;
+        width: 6px;
+        height: 100%;
+        cursor: col-resize;
+        background: transparent;
+        z-index: 10;
+      `;
       cell.appendChild(resizer);
 
       let startX, startWidth;
@@ -1544,14 +2280,156 @@ function initTableDragDrop() {
         document.addEventListener("mousemove", onMouseMove);
         document.addEventListener("mouseup", onMouseUp);
       });
+
+      resizer.addEventListener("mouseenter", () => {
+        resizer.style.background = "var(--accent)";
+      });
+
+      resizer.addEventListener("mouseleave", () => {
+        resizer.style.background = "transparent";
+      });
     });
-  });
-}
+  }
+
+  function addRowDragging(table) {
+    const tbody = table.querySelector("tbody");
+    if (!tbody) return;
+
+    const rows = tbody.querySelectorAll("tr");
+    rows.forEach(row => {
+      row.draggable = true;
+
+      row.addEventListener("dragstart", (e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = "move";
+        row.classList.add("dragging");
+      });
+
+      row.addEventListener("dragend", () => {
+        row.classList.remove("dragging");
+        tbody.querySelectorAll("tr").forEach(r => r.classList.remove("drag-over"));
+      });
+
+      row.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const dragging = tbody.querySelector("tr.dragging");
+        if (dragging && dragging !== row) {
+          row.classList.add("drag-over");
+        }
+      });
+
+      row.addEventListener("dragleave", () => {
+        row.classList.remove("drag-over");
+      });
+
+      row.addEventListener("drop", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const dragging = tbody.querySelector("tr.dragging");
+        if (!dragging || dragging === row) return;
+
+        const allRows = Array.from(tbody.querySelectorAll("tr"));
+        const dragIdx = allRows.indexOf(dragging);
+        const dropIdx = allRows.indexOf(row);
+
+        if (dragIdx < dropIdx) {
+          tbody.insertBefore(dragging, row.nextSibling);
+        } else {
+          tbody.insertBefore(dragging, row);
+        }
+
+        row.classList.remove("drag-over");
+        autosave();
+      });
+    });
+  }
+
+  function addTableDragging(table) {
+    const wrapper = table.closest(".table-wrapper");
+    if (!wrapper) return;
+
+    const handle = wrapper.querySelector(".table-drag-handle");
+    if (!handle) return;
+
+    let isDragging = false;
+
+    handle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      wrapper.draggable = true;
+      isDragging = true;
+    });
+
+    wrapper.addEventListener("dragstart", (e) => {
+      if (!isDragging) {
+        e.preventDefault();
+        return;
+      }
+
+      e.dataTransfer.effectAllowed = "move";
+      wrapper.classList.add("dragging");
+    });
+
+    wrapper.addEventListener("dragend", () => {
+      wrapper.classList.remove("dragging");
+      wrapper.draggable = false;
+      isDragging = false;
+
+      const indicator = el("editor").querySelector(".drop-indicator");
+      if (indicator) indicator.remove();
+    });
+
+    const editor = el("editor");
+    let dropIndicator = null;
+
+    editor.addEventListener("dragover", (e) => {
+      if (!isDragging) return;
+
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "move";
+
+      if (!dropIndicator) {
+        dropIndicator = document.createElement("div");
+        dropIndicator.className = "drop-indicator";
+      }
+
+      const target = e.target;
+      if (target && target !== wrapper && editor.contains(target)) {
+        const targetEl = target.closest("p, h1, h2, h3, h4, h5, h6, ul, ol, .table-wrapper");
+        if (targetEl && targetEl !== wrapper) {
+          const rect = targetEl.getBoundingClientRect();
+          if (e.clientY < rect.top + rect.height / 2) {
+            targetEl.parentNode.insertBefore(dropIndicator, targetEl);
+          } else {
+            targetEl.parentNode.insertBefore(dropIndicator, targetEl.nextSibling);
+          }
+        }
+      }
+    });
+
+    editor.addEventListener("drop", (e) => {
+      if (!isDragging) return;
+
+      e.preventDefault();
+
+      if (dropIndicator && dropIndicator.parentNode) {
+        dropIndicator.parentNode.insertBefore(wrapper, dropIndicator);
+        dropIndicator.remove();
+        dropIndicator = null;
+        autosave();
+      }
+    });
+  }
+
+  return { init };
+})();
 
 function wireInsertRibbon() {
-  el("btn-insert-table").onclick = () => insertTableFlow();
+  el("btn-insert-table").onclick = () => TablePicker.show();
   el("btn-insert-picture").onclick = () => Editor.insertPicture();
-  el("btn-insert-link").onclick = () => insertLinkFlow();
+  el("btn-insert-link").onclick = () => LinkDialog.show();
 
   el("btn-insert-symbol").onclick = () => { if (Editor?.saveSelection) Editor.saveSelection(); buildSymbolGrid(); showDialog("symbol-dialog"); };
   el("btn-insert-emoji").onclick = () => { if (Editor?.saveSelection) Editor.saveSelection(); buildEmoji(); showDialog("emoji-dialog"); };
@@ -2424,21 +3302,35 @@ async function boot() {
   await refreshData();
   renderTree();
 
+  // Check if this is the first visit
+  const isFirstVisit = await Storage.kvGet("isFirstVisit");
+
+  if (isFirstVisit === true) {
+    // Show welcome screen on first install
+    showWelcomeScreen();
+    // Mark as no longer first visit
+    await Storage.kvSet("isFirstVisit", false);
+    return;
+  }
+
+  // Try to open last active page
   const activeId = await Storage.kvGet("activePageId");
+  if (activeId) {
+    const page = await Storage.getPage(activeId);
+    if (page) {
+      await openPage(activeId);
+      return;
+    }
+  }
+
+  // Fallback to first available page
   const firstFolder = state.folders[0];
   const firstPage = firstFolder ? (state.pagesByFolder.get(firstFolder.id) || [])[0] : null;
 
-  if (activeId) {
-    await openPage(activeId);
-  } else if (firstPage) {
+  if (firstPage) {
     await openPage(firstPage.id);
   } else {
-    // No pages available, show welcome screen
-    showWelcomeScreen();
-  }
-
-  // If still no active page after trying to open, show welcome screen
-  if (!state.activePage) {
+    // No pages available - show welcome screen
     showWelcomeScreen();
   }
 }
@@ -2479,6 +3371,12 @@ async function initializeUI() {
 
   el("sidebar-toggle").onclick = toggleSidebar;
   el("close-page-btn").onclick = closePage;
+
+  // App title click - navigate to Mini Note website
+  document.querySelector(".app-title").onclick = () => {
+    window.open("https://tejaadusumilli21.github.io/Mini-Note/", "_blank", "noopener,noreferrer");
+  };
+
   el("supporter-btn").onclick = () => {
     window.open("https://buymeacoffee.com/teamteja3q", "_blank", "noopener,noreferrer");
   };
